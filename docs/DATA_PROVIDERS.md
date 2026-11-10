@@ -71,7 +71,9 @@ production; nothing is ever stored in the browser or the repository.
 
 **Requests per search.** One search uses roughly: 1 request per 500 listings per location,
 1 market-statistics request per ZIP code found (cached for `MARKET_STATS_TTL_DAYS`), and up to
-`RENT_AVM_TOP_N` rent-estimate requests. Opening a property's analysis page requests its rent
+`RENT_AVM_TOP_N` × `RENT_AVM_MAX_ROUNDS` (default 2) rent-estimate requests — fewer when the
+top-ranked properties already have fresh estimates. Vacant land listings are excluded unless
+the Land property type is requested. Opening a property's analysis page requests its rent
 estimate if it has none. On a small plan, lower `RENT_AVM_TOP_N` and set the monthly request
 limit under Settings → API usage & budgets to your plan's quota (the first account registered
 is the administrator). Budget environment variables only seed the initial values; after first
@@ -81,10 +83,9 @@ start they are managed in Settings.
 plan is activated at <https://app.rentcast.io/app/api>. The app reports that message on the
 search instead of returning results.
 
-> The adapter was written from RentCast's public API reference and is covered by tests using
-> recorded-shape fixtures. It could not be exercised against the live API from the build
-> environment, so run one live search and check `Settings → API usage` for errors when you
-> first add a key.
+> The adapter has been run against the live RentCast API (sale listings, rent and value
+> estimates, market statistics and property records) and a full live search was completed
+> end to end. It is also covered by tests using recorded-shape fixtures.
 
 ## AirDNA notes
 
@@ -116,7 +117,7 @@ have one:
 
 | Mechanism | Detail |
 |---|---|
-| Staged retrieval | Listings (paginated) → free local filters → one `/markets` call per ZIP for area rents → property-level AVM only for the top `RENT_AVM_TOP_N` candidates → STR estimates only for the top `STR_ESTIMATE_TOP_N` or on demand |
+| Staged retrieval | Listings (paginated) → free local filters → one `/markets` call per ZIP for conservative area rents → property-level AVM only for the top `RENT_AVM_TOP_N` candidates (re-checked for `RENT_AVM_MAX_ROUNDS` rounds) → STR estimates only for the top `STR_ESTIMATE_TOP_N` or on demand |
 | Caching | Listing pages in Redis (`LISTING_CACHE_TTL_SECONDS`), estimates and market stats in PostgreSQL with freshness thresholds (`*_TTL_DAYS`), identical searches served from cache |
 | Budgets | Monthly request and cost limits per provider, enforced before every call |
 | Disclosure | Hitting a budget, rate limit, provider error or `MAX_LISTINGS_PER_SEARCH` marks the search **partial** with the reason shown to the user |

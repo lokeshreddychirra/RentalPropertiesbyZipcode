@@ -322,6 +322,9 @@ def passes_listing_filters(record: ListingRecord, filters: SearchFilters, resolv
         return False
     if filters.property_types and record.property_type not in filters.property_types:
         return False
+    # Vacant land cannot be rented as a home, so it is only included when explicitly requested.
+    if not filters.property_types and record.property_type == "land":
+        return False
     if filters.max_hoa is not None and record.hoa_fee_monthly is not None and record.hoa_fee_monthly > filters.max_hoa:
         return False
     if filters.max_days_on_market is not None and (record.days_on_market is None or record.days_on_market > filters.max_days_on_market):
@@ -526,7 +529,7 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
         rows: list[tuple[uuid.UUID, RentEstimateRecord]] = []
         for ctx in needs_rent:
             stats = market_by_zip.get(ctx.zip_code or "")
-            found = stats.rent_for_bedrooms(ctx.bedrooms) if stats else None
+            found = stats.screening_rent(ctx.bedrooms, ctx.square_feet) if stats else None
             if found and stats:
                 rent, low, high, sample = found
                 rows.append((ctx.id, RentEstimateRecord(provider=stats.provider, level="market_zip", rent=rent, rent_low=low, rent_high=high, market_sample=sample, fetched_at=stats.fetched_at)))
@@ -540,8 +543,8 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
     cards_by_id = {card.id: card for card in cards}
 
     def promising() -> list[uuid.UUID]:
-        """Candidates ordered by first-pass long-term score (unranked properties last)."""
-        ranked = sorted(cards, key=lambda c: (c.long_term.score if c.long_term.score is not None else Decimal(-1)), reverse=True)
+        """Candidates ordered by current long-term score (unranked properties last)."""
+        ranked = sorted(cards_by_id.values(), key=lambda c: (c.long_term.score if c.long_term.score is not None else Decimal(-1), str(c.id)), reverse=True)
         return [c.id for c in ranked]
 
     # -- paid upgrades: property-level rent for the best candidates -------------
@@ -584,11 +587,9 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
 
     if providers.rent is not None and filters.strategy in ("ltr", "both"):
         rent_provider = providers.rent
-        missing = [pid for pid in promising() if contexts[pid].rent is None or contexts[pid].rent.source != "property_avm"]  # type: ignore[union-attr]
-        allowed, limited = await _budgeted_top_n(rent_provider.key, settings.rent_avm_top_n)
-        targets = missing[:allowed]
-        if limited and len(missing) > allowed:
-            partial.append(f"Property-level rent estimates were limited to {allowed} properties by the {rent_provider.name} budget; the rest use ZIP-level medians.")
+        free = rent_provider.key == "demo"
+        attempted: set[uuid.UUID] = set()
+        max_total = len(cards_by_id) if free else settings.rent_avm_top_n * settings.rent_avm_max_rounds
 
         async def fetch_rent(ctx: PropertyContext) -> bool:
             record = await rent_provider.rent_estimate(property_store.subject_for(ctx))
@@ -598,8 +599,36 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
                 await property_store.save_rent_estimate(session, ctx.id, record)
             return True
 
-        if targets:
-            partial.extend(await run_stage("rent_estimates", "Property-level rent estimates", targets, fetch_rent, 62))
+        def unverified(pid: uuid.UUID) -> bool:
+            rent = contexts[pid].rent
+            return rent is None or rent.source != "property_avm"
+
+        # Verify the top of the ranking, then re-rank and verify whatever has moved into the top,
+        # so the best-ranked properties rest on property-level estimates rather than area statistics.
+        for _ in range(1 if free else max(settings.rent_avm_max_rounds, 1)):
+            ranked = promising()
+            window = ranked if free else ranked[: settings.rent_avm_top_n]
+            targets = [pid for pid in window if pid not in attempted and unverified(pid)]
+            room = max_total - len(attempted)
+            if not free:
+                remaining = await get_usage_tracker().remaining_requests(rent_provider.key)
+                if remaining is not None and remaining < min(len(targets), room):
+                    partial.append(f"Property-level rent estimates were limited by the {rent_provider.name} budget ({remaining} request(s) left this month); other properties use conservative ZIP-level estimates.")
+                    room = min(room, remaining)
+            targets = targets[: max(room, 0)]
+            if not targets:
+                break
+            attempted.update(targets)
+            errors = await run_stage("rent_estimates", "Property-level rent estimates", targets, fetch_rent, 62)
+            partial.extend(errors)
+            async with session_scope() as session:
+                refreshed = await property_store.load_contexts(session, targets)
+            contexts.update(refreshed)
+            for card in await asyncio.to_thread(_analyze_batch, list(refreshed.values()), request.defaults, request.weights):
+                cards_by_id[card.id] = card
+            if errors:
+                break
+        upgraded.clear()
 
     if providers.short_term is not None and filters.strategy in ("str", "both"):
         str_provider = providers.short_term

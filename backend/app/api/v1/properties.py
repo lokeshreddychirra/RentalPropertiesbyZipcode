@@ -227,7 +227,7 @@ async def rent_estimate(
         return RentEstimateOut(
             available=True, provider=ctx.rent.provider, fetched_at=ctx.rent.fetched_at, is_demo=ctx.is_demo, level="market_zip", rent=ctx.rent.rent,
             rent_low=ctx.rent.rent_low, rent_high=ctx.rent.rent_high, annual_gross=ctx.rent.rent * 12, market_sample=ctx.rent.market_sample,
-            reason=failure or "This is the ZIP-level median for the bedroom count, not a property-specific estimate.", can_request=providers.rent is not None and failure is None,
+            reason=failure or "This is a conservative ZIP-level screening estimate, not a property-specific one.", can_request=providers.rent is not None and failure is None,
         )
     return RentEstimateOut(
         available=False, is_demo=ctx.is_demo, can_request=providers.rent is not None and failure is None and not fetch,

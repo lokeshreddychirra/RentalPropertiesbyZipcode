@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     # Property-level (paid) estimates are only requested for the most promising
     # candidates after cheap ZIP-level screening.
     rent_avm_top_n: int = 15
+    # After the top candidates are upgraded the ranking is re-checked; if unverified properties
+    # have moved into the top N they are upgraded too, for at most this many rounds
+    # (so at most rent_avm_top_n × rent_avm_max_rounds paid rent estimates per search).
+    rent_avm_max_rounds: int = 2
     str_estimate_top_n: int = 5
     search_concurrency: int = 8
     # Run search jobs inside the API process (asyncio task) instead of the

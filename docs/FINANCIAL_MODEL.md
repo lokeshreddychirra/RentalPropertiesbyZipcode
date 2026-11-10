@@ -30,6 +30,23 @@ occupancy) are never taken from standing defaults.
 If no reliable rent (or ADR + occupancy) is available, that strategy is reported as
 **unavailable** — it is never calculated from an invented number.
 
+### ZIP-level screening rent
+
+Search results are first screened with an area-level rent so that paid property-level
+estimates are only requested for promising candidates. Two ZIP statistics are considered and
+the **lower** is used:
+
+* the median rent for the home's bedroom count — only if at least 5 rental listings back it;
+* living area × the ZIP median rent per square foot — only if the ZIP has at least 20 rental
+  listings; when the home's bedroom count has no reliable statistic this figure is capped at
+  the highest reliable bedroom median (rent per square foot falls as homes get larger).
+
+Taking the lower value is deliberate: a property with an unverified area-level estimate should
+not outrank one with a property-specific estimate just because a thin statistic is high. After
+the top-ranked candidates receive property-level estimates the ranking is re-checked, and any
+unverified property that has moved into the top N is verified too (up to
+`RENT_AVM_MAX_ROUNDS` rounds). ZIP-level estimates are always labelled as such.
+
 ### Default assumptions
 
 | Group | Field | Default |
@@ -150,7 +167,7 @@ Each strategy gets an additive 0–100 data-quality score.
 | Factor | Points |
 |---|---|
 | Listing freshness | seen ≤ 2 days: 20 · ≤ 7: 15 · ≤ 30: 8 · older or unknown: 0 |
-| Rent estimate | property-level AVM with ≥ 5 comps: 40 · 3–4 comps: 30 · < 3 comps: 20 · user-entered: 25 · ZIP median with ≥ 20 listings: 18, otherwise 10 · none: 0 |
+| Rent estimate | property-level AVM with ≥ 5 comps: 40 · 3–4 comps: 30 · < 3 comps: 20 · user-entered: 25 · ZIP-level estimate backed by ≥ 20 listings: 18, otherwise 10 · none: 0 |
 | Property tax | source value: 15 · user-entered: 10 · estimated from rate: 5 |
 | HOA & insurance | HOA reported: 5 · insurance user-entered: 5, estimated: 2 |
 | Listing completeness | beds, baths, sqft, year built, coordinates: 3 each |

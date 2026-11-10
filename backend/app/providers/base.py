@@ -206,6 +206,11 @@ class TaxRecord(BaseModel):
     source: str
 
 
+# Minimum rental listings behind a ZIP-level statistic before it is used for screening.
+MIN_BEDROOM_SAMPLE = 5
+MIN_ZIP_SAMPLE = 20
+
+
 class BedroomStat(BaseModel):
     bedrooms: int
     median: Num | None = None
@@ -244,17 +249,36 @@ class MarketStats(BaseModel):
     fetched_at: datetime
     is_demo: bool = False
 
-    def rent_for_bedrooms(self, bedrooms: Decimal | None) -> tuple[Decimal, Decimal | None, Decimal | None, int] | None:
-        """ZIP median rent for a bedroom count: (rent, low, high, sample) or None."""
-        if bedrooms is None:
-            return None
-        target = int(bedrooms)
-        for stat in self.rent_by_bedrooms:
-            if stat.bedrooms == target and (stat.median or stat.average):
-                rent = stat.median or stat.average
-                assert rent is not None
-                return rent, stat.low, stat.high, stat.count
-        return None
+    def screening_rent(self, bedrooms: Decimal | None, square_feet: int | None) -> tuple[Decimal, Decimal | None, Decimal | None, int] | None:
+        """Conservative ZIP-level rent for first-pass screening: (rent, low, high, sample) or None.
+
+        Two area-level estimates are considered and the **lower** one is used, so that an
+        unverified property cannot outrank one with a property-specific estimate merely
+        because a thin statistic happens to be high:
+
+        * the ZIP median rent for the bedroom count (needs at least 5 rental listings), and
+        * the home's living area × the ZIP median rent per square foot (needs at least 20),
+          capped at the highest reliable bedroom median when the home's own bedroom count
+          has no reliable statistic.
+
+        With neither available there is no reliable estimate and None is returned.
+        """
+        reliable = {
+            stat.bedrooms: stat for stat in self.rent_by_bedrooms if (stat.median or stat.average) and stat.count >= MIN_BEDROOM_SAMPLE
+        }
+        candidates: list[tuple[Decimal, Decimal | None, Decimal | None, int]] = []
+        bucket = reliable.get(int(bedrooms)) if bedrooms is not None else None
+        if bucket is not None:
+            candidates.append(((bucket.median or bucket.average), bucket.low, bucket.high, bucket.count))  # type: ignore[arg-type]
+        if square_feet and self.median_rent_per_sqft and self.rental_listings >= MIN_ZIP_SAMPLE:
+            by_size = (Decimal(square_feet) * self.median_rent_per_sqft).quantize(Decimal("1"))
+            if bucket is None and reliable:
+                # Rent per square foot falls as homes get larger, so for sizes with no reliable
+                # bedroom statistic the size-based figure is capped at the highest reliable median.
+                by_size = min(by_size, max((stat.median or stat.average) for stat in reliable.values()))  # type: ignore[type-var]
+            if by_size > 0:
+                candidates.append((by_size, None, None, self.rental_listings))
+        return min(candidates, key=lambda c: c[0]) if candidates else None
 
 
 class GeocodeResult(BaseModel):

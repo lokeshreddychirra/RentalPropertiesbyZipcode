@@ -6,7 +6,7 @@ intentionally simple, additive and documented (docs/FINANCIAL_MODEL.md §7):
 Long-term rental (max 100)
     Listing freshness      20  (seen ≤2 days: 20, ≤7: 15, ≤30: 8, older/unknown: 0)
     Rent estimate          40  (property-level AVM ≥5 comps: 40, 3–4 comps: 30, <3 comps: 20;
-                                user-entered: 25; ZIP median ≥20 listings: 18, otherwise 10; none: 0)
+                                user-entered: 25; ZIP-level estimate from ≥20 listings: 18, otherwise 10; none: 0)
     Property tax           15  (source value: 15, user-entered: 10, estimated from rate: 5)
     HOA / insurance        10  (HOA known: 5; insurance user-entered: 5, estimated: 2)
     Listing completeness   15  (beds, baths, sqft, year built, coordinates: 3 each)
@@ -178,9 +178,9 @@ def assess_ltr(q: QualityInputs, now: datetime | None = None) -> QualityAssessme
         points, detail, prov = 25, "Monthly rent entered by you", "user"
     elif q.rent_source == "market_zip":
         points = 18 if q.rent_market_sample >= 20 else 10
-        detail = f"ZIP-level median rent for this bedroom count from {provider} ({q.rent_market_sample} listings) — not specific to this property"
+        detail = f"Conservative ZIP-level rent estimate from {provider} market statistics ({q.rent_market_sample} listings) — not specific to this property"
         prov = "estimated"
-        caveats.append("Rent is a ZIP-level median, not a property-specific estimate. Request a detailed estimate before relying on it.")
+        caveats.append("Rent is a ZIP-level screening estimate, not a property-specific one. Request a detailed estimate before relying on it.")
     else:
         points, detail, prov = 0, "No rent estimate available", "unavailable"
 

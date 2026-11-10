@@ -22,7 +22,7 @@ export function viewOf(card: CardData, strategy: StrategyFilter): { key: "ltr" |
 
 const RENT_SOURCE_NOTE: Record<string, string> = {
   property_avm: "Property-level rent estimate with comparables",
-  market_zip: "ZIP-level median rent for this bedroom count — request a detailed estimate on the analysis page",
+  market_zip: "Conservative ZIP-level screening estimate, not specific to this property — open the analysis to request a property-level estimate",
   none: "No rent estimate available",
 };
 
@@ -92,7 +92,7 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
             value={card.long_term.available ? `${usd(card.long_term.monthly_income)}/mo` : "Unavailable"}
             tone={card.long_term.available ? undefined : "text-muted-foreground font-medium"}
             hint={RENT_SOURCE_NOTE[card.rent_source]}
-            sub={card.rent_source === "market_zip" ? "ZIP median" : card.rent_source === "property_avm" ? "Property estimate" : undefined}
+            sub={card.rent_source === "market_zip" ? "ZIP-level estimate" : card.rent_source === "property_avm" ? "Property estimate" : undefined}
           />
           <Metric
             label="Short-term revenue"

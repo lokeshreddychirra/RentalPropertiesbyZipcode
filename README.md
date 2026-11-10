@@ -114,7 +114,7 @@ Errors have the shape `{"error": {"code", "message", "details"}}`.
 ## Development
 
 ```bash
-cd backend && pytest                                              # 76 tests
+cd backend && pytest                                              # 78 tests
 cd frontend && npm run typecheck && npm run lint && npm run build
 ```
 
@@ -124,9 +124,9 @@ exhaustion and parsing with stubbed HTTP.
 
 ## Known limitations
 
-* Provider adapters were written from public API references and tested with stubbed responses;
-  they have not been exercised against the live RentCast, AirDNA, Mapbox or Anthropic APIs from
-  the build environment. The AirDNA mapping in particular must be confirmed against your contract.
+* The RentCast and Mapbox integrations have been run against the live services. The AirDNA
+  and Anthropic integrations have only been tested with stubbed responses; the AirDNA mapping
+  in particular must be confirmed against your contract.
 * RentCast does not supply listing photos, descriptions or links to the original listing page,
   so those are unavailable in RentCast-only deployments.
 * The model is pre-tax and does not predict property-tax reassessment after a sale.

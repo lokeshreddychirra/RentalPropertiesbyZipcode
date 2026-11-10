@@ -219,3 +219,34 @@ def test_ai_grounding_rejects_invented_numbers():
     assert ungrounded_numbers(explanation("Gross yield is 9.2% with $412 monthly cash flow on $68,450 invested at 7% over 30 years (about $68k)."), facts) == []
     bad = ungrounded_numbers(explanation("Gross yield is 11.5% and the home should appreciate 25% in 3 years."), facts)
     assert bad == ["11.5", "25"]
+
+
+def test_land_listings_are_excluded_unless_requested():
+    from app.services.search import ResolvedSearch, passes_listing_filters
+
+    land = _record("rentcast", "9 Empty Lot Rd", property_type="land")
+    house = _record("rentcast", "10 Home St", property_type="single_family")
+    resolved = ResolvedSearch(queries=[])
+    default = SearchFilters(zip_codes=["30310"])
+    assert passes_listing_filters(house, default, resolved) and not passes_listing_filters(land, default, resolved)
+    assert passes_listing_filters(land, SearchFilters(zip_codes=["30310"], property_types=["land"]), resolved)
+
+
+def test_zip_level_screening_rent_is_conservative_and_needs_enough_listings():
+    """Figures observed for a real ZIP: a 2-bed median of $3,300 from 7 listings vs ~$2,430 property-level."""
+    from datetime import UTC, datetime
+
+    from app.providers.base import BedroomStat, MarketStats
+
+    stats = MarketStats(
+        provider="rentcast", zip_code="30269", rental_listings=101, median_rent_per_sqft=D("1.6"), fetched_at=datetime.now(UTC),
+        rent_by_bedrooms=[BedroomStat(bedrooms=2, median=D("3300"), count=7), BedroomStat(bedrooms=3, median=D("2400"), count=49), BedroomStat(bedrooms=6, median=D("4500"), count=1)],
+    )
+    assert stats.screening_rent(D("2"), 1370)[0] == D("2192")  # size-based estimate wins over the thin, high bedroom median
+    assert stats.screening_rent(D("3"), 1660)[0] == D("2400")  # bedroom median is the lower of the two
+    assert stats.screening_rent(D("6"), None) is None  # one listing is not a reliable statistic
+    assert stats.screening_rent(D("7"), 4000)[0] == D("3300")  # no reliable bucket: size-based (6,400) capped at the highest reliable median
+    assert stats.screening_rent(D("7"), 1500)[0] == D("2400")  # … and used as-is when it is below that cap
+    assert stats.screening_rent(None, None) is None
+    thin = stats.model_copy(update={"rental_listings": 12})
+    assert thin.screening_rent(D("6"), 3900) is None  # too few listings for either statistic

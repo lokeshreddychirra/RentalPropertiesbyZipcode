@@ -41,10 +41,13 @@ polled by the UI.
 3. **Deduplicate** across providers by normalised address and upsert into PostgreSQL.
 4. **Screen** on listing facts (active status, price, beds, type, HOA, days on market, county,
    drawn polygon) — no provider calls.
-5. **Area rents:** one market-statistics call per ZIP gives a median rent per bedroom count, so
-   every candidate gets a first-pass return at very low cost (labelled as ZIP-level, low confidence).
-6. **Upgrade the best candidates:** property-level rent and STR estimates are requested only
-   for the top-N by first-pass score, within the remaining budget.
+5. **Area rents:** one market-statistics call per ZIP gives a deliberately conservative
+   ZIP-level rent for every candidate (see FINANCIAL_MODEL.md), so a first-pass return costs
+   almost nothing. It is always labelled as a ZIP-level estimate.
+6. **Verify the best candidates:** property-level rent estimates are requested for the top-N
+   by score; the ranking is then re-checked and anything unverified that has moved into the
+   top-N is verified too (bounded rounds, within the remaining budget). STR estimates are
+   requested for the top-N or on demand.
 7. **Rank:** the deterministic engine analyses every candidate; cards are stored as a snapshot.
 
 Sorting, return-threshold filters, viewport and polygon filters are applied to the snapshot at
