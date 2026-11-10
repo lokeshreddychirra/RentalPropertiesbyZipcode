@@ -197,8 +197,9 @@ def ungrounded_numbers(explanation: AIExplanation, facts: dict[str, Any]) -> lis
     """Numbers in the explanation that do not correspond to any provided fact.
 
     A number is accepted when it equals a fact (or its absolute value) after
-    rounding to the precision the model used. Small counts (≤ 12) and 100 are
-    always allowed ("3 comparables", "12 months", "100% occupancy").
+    rounding to the precision the model used. Bare small counts (≤ 12, e.g.
+    "3 comparables", "12 months") are allowed; anything written as money, a
+    decimal or a percentage must match a fact.
     """
     allowed: set[Decimal] = set()
     _collect_numbers(facts, allowed)
@@ -215,7 +216,10 @@ def ungrounded_numbers(explanation: AIExplanation, facts: dict[str, Any]) -> lis
         if cleaned in ("", "-"):
             continue
         value = abs(Decimal(cleaned)) * (1000 if thousands else 1)
-        if value <= 12 or value == 100:
+        # Plain small counts ("3 comparables", "12 months") are not financial figures.
+        # Anything written as money or a percentage must always trace to a fact.
+        is_metric = "$" in token or "." in cleaned or thousands or text[match.end() : match.end() + 9].lstrip().startswith(("%", "percent", "pts", "point"))
+        if not is_metric and (value <= 12 or value == 100):
             continue
         places = 0 if thousands or "." not in cleaned else len(cleaned.split(".")[1])
         quantum = Decimal(1).scaleb(-places)
