@@ -10,7 +10,11 @@ import type { NextRequest } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const BACKEND_URL = () => (process.env.BACKEND_URL ?? "http://localhost:8000").replace(/\/$/, "");
+const BACKEND_URL = () => {
+  const raw = (process.env.BACKEND_URL ?? "http://localhost:8000").trim().replace(/\/$/, "");
+  // Some platforms provide a bare "host:port" for internal services.
+  return /^https?:\/\//.test(raw) ? raw : `http://${raw}`;
+};
 const FORWARDED_REQUEST_HEADERS = ["accept", "content-type", "cookie", "authorization"];
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "cache-control"];
 

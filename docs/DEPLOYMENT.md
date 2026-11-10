@@ -7,6 +7,9 @@ Two container images run the whole application:
 | `propertyyield-api` | `backend/Dockerfile` | `api` (default), `worker`, `migrate` — selected by the container argument |
 | `propertyyield-web` | `frontend/Dockerfile` | Next.js UI and same-origin API proxy |
 
+For small or free-tier hosts there is also `deploy/single-container/Dockerfile`, which runs the UI
+and API in one container without a worker.
+
 Both are configured entirely by environment variables at runtime (see `.env.example`), so the
 same images run locally, on Azure, or on any other container platform.
 
@@ -60,6 +63,36 @@ cd backend && ruff check app tests
 cd frontend && npm run typecheck && npm run lint && npm run build
 cd frontend && npm run gen:api  # regenerate TypeScript types after changing backend schemas
 ```
+
+## Render (quickest way to a public URL)
+
+`render.yaml` is a Render Blueprint that creates one web service (UI + API in a single
+container, built from `deploy/single-container/Dockerfile`), a PostgreSQL database and a
+Key Value (Redis) instance — all on free plans.
+
+1. Sign in at <https://dashboard.render.com> with your GitHub account and give Render access
+   to this repository.
+2. **New → Blueprint**, choose the repository and the branch that contains `render.yaml`,
+   then **Apply**. Nothing needs to be filled in: the session secret is generated and the
+   database and cache are wired automatically.
+3. The first build takes several minutes. When the `propertyyield` service shows **Live**,
+   open its `https://propertyyield-….onrender.com` URL.
+4. The app starts in demo mode. For live listings add `RENTCAST_API_KEY` under the service's
+   **Environment** tab (optionally `AIRDNA_API_KEY`, `MAPBOX_ACCESS_TOKEN`,
+   `MAPBOX_PUBLIC_TOKEN`, `ANTHROPIC_API_KEY`) and let it redeploy.
+
+Free-plan caveats:
+
+* The service sleeps after about 15 minutes without traffic; the next visit takes up to a
+  minute to wake it.
+* Free PostgreSQL databases expire after 30 days — upgrade the database to keep saved data.
+* There is no background worker: searches run inside the API process (`JOBS_INLINE=true`) and
+  saved-search alerts are **not** checked. For alerts, deploy the split images with a worker.
+
+The single-container start-up (migrations on an empty database, both processes, a search and
+sign-up in production mode) was verified locally by running `deploy/single-container/start.sh`.
+The Docker image build and the Blueprint itself could not be run from the build environment,
+so treat the first Render deploy as the test and check the service logs if it fails.
 
 ## Azure Container Apps
 
@@ -118,8 +151,8 @@ Nothing in the application is Azure-specific. Provide:
 | One-off job | `migrate` before each rollout |
 | Secrets | the variables in `.env.example` |
 
-`DATABASE_URL` uses the `postgresql+asyncpg://` scheme (append `?ssl=require` for managed
-databases); `REDIS_URL` accepts `redis://` and `rediss://`.
+`DATABASE_URL` may be given as `postgres://`, `postgresql://` or `postgresql+asyncpg://`
+(`sslmode=` is translated for the async driver); `REDIS_URL` accepts `redis://` and `rediss://`.
 
 ## Production checklist
 

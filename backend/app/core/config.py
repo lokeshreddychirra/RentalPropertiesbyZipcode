@@ -127,6 +127,18 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalise_database_url(cls, value: object) -> object:
+        """Accept the plain ``postgres://`` / ``postgresql://`` URLs that managed hosts hand out."""
+        if isinstance(value, str):
+            for prefix in ("postgres://", "postgresql://"):
+                if value.startswith(prefix):
+                    value = "postgresql+asyncpg://" + value[len(prefix) :]
+            # asyncpg spells the libpq ``sslmode`` parameter ``ssl``.
+            value = value.replace("?sslmode=", "?ssl=").replace("&sslmode=", "&ssl=")
+        return value
+
     @field_validator("rentcast_api_key", "airdna_api_key", "mapbox_access_token", "anthropic_api_key", mode="before")
     @classmethod
     def _blank_to_none(cls, value: object) -> object:

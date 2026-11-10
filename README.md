@@ -51,7 +51,7 @@ are ranked by calculated returns — not by price or estimated rent.
 | Jobs | arq workers on Redis (search jobs, scheduled alert checks) |
 | Finance | Pure Python `Decimal` engine |
 | Providers | RentCast, AirDNA, Mapbox, Anthropic Claude — all behind adapters |
-| Deploy | Docker Compose locally; Azure Container Apps (Bicep); provider-independent images |
+| Deploy | Docker Compose locally; Render Blueprint; Azure Container Apps (Bicep); provider-independent images |
 
 ## Quick start
 
@@ -63,7 +63,8 @@ docker compose up --build
 Open <http://localhost:3000>. With no API keys the app starts in demo mode — try
 *Atlanta, GA* or ZIP *30269*. API documentation is at <http://localhost:8000/api/docs>.
 
-To run without Docker, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+To run without Docker, or to get a public URL quickly with the included Render Blueprint
+(`render.yaml`), see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### Going live
 
@@ -113,7 +114,7 @@ Errors have the shape `{"error": {"code", "message", "details"}}`.
 ## Development
 
 ```bash
-cd backend && pytest                                              # 75 tests
+cd backend && pytest                                              # 76 tests
 cd frontend && npm run typecheck && npm run lint && npm run build
 ```
 
@@ -129,4 +130,5 @@ exhaustion and parsing with stubbed HTTP.
 * RentCast does not supply listing photos, descriptions or links to the original listing page,
   so those are unavailable in RentCast-only deployments.
 * The model is pre-tax and does not predict property-tax reassessment after a sale.
-* The Azure template is unvalidated against a real subscription — run `what-if` first.
+* The Azure template and the Render Blueprint have not been deployed from the build
+  environment — treat the first deploy as the test (`what-if` first on Azure).

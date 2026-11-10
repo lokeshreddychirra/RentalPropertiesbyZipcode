@@ -122,3 +122,11 @@ def test_recommendation_prefers_ltr_when_stronger_or_comparable():
     assert recommend(analyze_strategy(a, "ltr"), analyze_strategy(a, "str"), "permitted").strategy == "ltr"
     none = recommend(analyze_strategy(assumptions(rent=None, adr=None), "ltr"), analyze_strategy(assumptions(rent=None, adr=None), "str"), "unknown")
     assert none.strategy is None
+
+
+def test_database_url_from_managed_hosts_is_normalised():
+    from app.core.config import Settings
+
+    assert Settings(database_url="postgres://u:p@host/db").database_url == "postgresql+asyncpg://u:p@host/db"
+    assert Settings(database_url="postgresql://u:p@host:5432/db?sslmode=require").database_url == "postgresql+asyncpg://u:p@host:5432/db?ssl=require"
+    assert Settings(database_url="postgresql+asyncpg://u:p@host/db").database_url == "postgresql+asyncpg://u:p@host/db"

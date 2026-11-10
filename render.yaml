@@ -1,0 +1,58 @@
+# Render Blueprint — deploys PropertyYield AI as one web service plus managed
+# PostgreSQL (PostGIS) and Key Value (Redis). All on Render's free plans.
+#
+# Deploy:  Render dashboard → New → Blueprint → select this repository and branch.
+#          Step-by-step instructions: docs/DEPLOYMENT.md ("Render").
+#
+# The app starts in DEMO mode (synthetic sample data). To use live listings, add
+# RENTCAST_API_KEY under the service's Environment tab after the first deploy;
+# optional: AIRDNA_API_KEY, MAPBOX_ACCESS_TOKEN, MAPBOX_PUBLIC_TOKEN, ANTHROPIC_API_KEY.
+#
+# Free-plan caveats: the service sleeps after ~15 minutes without traffic (the next
+# visit takes up to a minute to wake it), free PostgreSQL databases expire after
+# 30 days, and there is no background worker, so saved-search alerts are not checked.
+
+databases:
+  - name: propertyyield-db
+    plan: free
+    databaseName: propertyyield
+    user: propertyyield
+
+services:
+  - type: keyvalue
+    name: propertyyield-cache
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: [] # private network only
+
+  - type: web
+    name: propertyyield
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/single-container/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/system/status
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: propertyyield-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: propertyyield-cache
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: DATA_MODE
+        value: auto
+      - key: JOBS_INLINE
+        value: "true"
+      - key: RUN_MIGRATIONS
+        value: "true"
+      - key: WEB_CONCURRENCY
+        value: "1"
