@@ -59,6 +59,16 @@ def test_quality_labels():
     assert stale.label == "medium"  # capped: listing may no longer be active
 
 
+def test_condo_without_reported_hoa_is_capped():
+    condo = assess_ltr(strong_quality(property_type="condo", hoa_known=False), NOW)
+    assert condo.label == "medium"
+    assert any("HOA dues were not reported" in c for c in condo.caveats)
+    assert assess_ltr(strong_quality(property_type="condo", hoa_known=True), NOW).label == "high"
+    house = assess_ltr(strong_quality(property_type="single_family", hoa_known=False), NOW)
+    assert house.label == "high" and not any("HOA dues" in c for c in house.caveats)
+    assert assess_str(strong_quality(property_type="townhouse", hoa_known=False), NOW).label == "medium"
+
+
 def test_str_quality_capped_when_legality_unverified():
     verified = assess_str(strong_quality(), NOW)
     assert verified.label == "high"

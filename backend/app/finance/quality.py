@@ -49,6 +49,7 @@ class QualityInputs(BaseModel):
     rent_estimated_at: datetime | None = None
     tax_source: TaxSource = "estimated"
     hoa_known: bool = False
+    property_type: str | None = None
     insurance_user_entered: bool = False
     str_source: StrSource = "none"
     str_provider: str | None = None
@@ -162,6 +163,20 @@ def _common(q: QualityInputs) -> list[QualityFactor]:
     ]
 
 
+HOA_TYPICAL_TYPES = {"condo", "townhouse"}
+
+
+def _apply_hoa_rule(q: QualityInputs, label: ConfidenceLabel, caveats: list[str]) -> ConfidenceLabel:
+    """Condos and townhouses almost always pay HOA dues; modelling $0 overstates returns."""
+    if q.hoa_known or q.property_type not in HOA_TYPICAL_TYPES:
+        return label
+    caveats.append(
+        "HOA dues were not reported for this condo/townhouse and are modelled as $0, which likely overstates returns. "
+        "Enter the actual HOA fee before relying on these figures."
+    )
+    return _cap(label, "medium")
+
+
 def assess_ltr(q: QualityInputs, now: datetime | None = None) -> QualityAssessment:
     now = now or datetime.now(UTC)
     freshness, age = _freshness(q, now)
@@ -195,6 +210,7 @@ def assess_ltr(q: QualityInputs, now: datetime | None = None) -> QualityAssessme
         caveats.append("Listing status could not be confirmed recently; verify the property is still for sale.")
     if q.tax_source == "estimated":
         caveats.append("Property tax is an estimate and often resets after a sale.")
+    label = _apply_hoa_rule(q, label, caveats)
     return QualityAssessment(strategy="ltr", score=score, label=label, factors=factors, caveats=caveats, is_demo=q.is_demo)
 
 
@@ -235,4 +251,5 @@ def assess_str(q: QualityInputs, now: datetime | None = None) -> QualityAssessme
         label = _cap(label, "medium")
     if age is None or age > 30:
         label = _cap(label, "medium")
+    label = _apply_hoa_rule(q, label, caveats)
     return QualityAssessment(strategy="str", score=score, label=label, factors=factors, caveats=caveats, is_demo=q.is_demo)

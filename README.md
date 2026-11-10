@@ -114,7 +114,7 @@ Errors have the shape `{"error": {"code", "message", "details"}}`.
 ## Development
 
 ```bash
-cd backend && pytest                                              # 78 tests
+cd backend && pytest                                              # 79 tests
 cd frontend && npm run typecheck && npm run lint && npm run build
 ```
 

@@ -178,6 +178,7 @@ def _quality_inputs(ctx: PropertyContext | None, provenance: dict[str, Provenanc
         rent_estimated_at=ctx.rent.fetched_at if ctx and ctx.rent else None,
         tax_source="source" if tax_prov == "verified" else "user" if tax_prov == "user" else "estimated",
         hoa_known=provenance.get("fixed.hoa_monthly") in ("verified", "user"),
+        property_type=ctx.property_type if ctx else None,
         insurance_user_entered=provenance.get("fixed.insurance_annual") == "user",
         str_source=str_source,  # type: ignore[arg-type]
         str_provider=ctx.short_term.provider if ctx and ctx.short_term else None,

@@ -138,6 +138,10 @@ Monthly revenue distributes the annual total by days-in-month × a 12-value seas
 
     occupancy = (fixed costs + debt service − other income) ÷ (annual rent × (1 − management %))
 
+Fixed costs are everything that does not fall with vacancy: property tax, insurance, HOA, other
+fixed costs, owner-paid utilities, and maintenance, CapEx and leasing (budgeted on scheduled
+rent). At the break-even occupancy, monthly cash flow is exactly zero.
+
 *Short-term:* the share of available nights that must be booked:
 
     margin per night = ADR × (1 − platform − booking − management − maintenance − CapEx %)
@@ -179,7 +183,8 @@ recorded: 10 · unknown: 0).
 **Labels:** High ≥ 75 · Medium ≥ 55 · Low ≥ 35 · otherwise Insufficient Data.
 
 Hard rules: no income estimate → Insufficient Data; unverified STR legality caps the STR label at
-Medium; a listing not confirmed for 30+ days caps the label at Medium.
+Medium; a listing not confirmed for 30+ days caps the label at Medium; a condo or townhouse
+whose HOA fee was not reported (modelled as $0) is capped at Medium with a caveat.
 
 ## 8. Investment score (0–100)
 
