@@ -167,6 +167,8 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
           syncView();
         }}
         onMoveEnd={syncView}
+        // Basemap tile failures (offline, blocked network) must not break the page: markers still render.
+        onError={() => undefined}
         onClick={(event) => {
           if (drawing) setDraft((current) => [...current, [event.lngLat.lng, event.lngLat.lat]]);
           else {
@@ -321,7 +323,7 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
         </div>
       ) : null}
 
-      {points.length > 0 ? (
+      {points.length > 1 ? (
         <div className="absolute bottom-3 left-3 rounded-md bg-card/95 px-2.5 py-2 text-[10px] shadow" aria-label="Marker colour legend">
           <p className="mb-1 font-medium text-muted-foreground">Gross rental yield</p>
           <div className="flex items-center gap-2">

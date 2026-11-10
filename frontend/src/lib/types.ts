@@ -17,9 +17,11 @@ export type Badge = S["Badge"];
 export type NLParseResult = S["NLParseResult"];
 export type PropertyDetail = S["PropertyDetail"];
 export type PropertyContext = S["PropertyContext"];
-export type PropertyAnalysis = S["PropertyAnalysis"];
+// The API always returns fully resolved assumptions; the schema marks defaulted fields optional.
+type DeepRequired<T> = T extends (infer U)[] ? DeepRequired<U>[] : T extends object ? { [K in keyof T]-?: DeepRequired<T[K]> } : T;
+export type Assumptions = DeepRequired<S["Assumptions"]>;
+export type PropertyAnalysis = Omit<S["PropertyAnalysis"], "assumptions"> & { assumptions: Assumptions };
 export type StrategyResult = S["StrategyResult"];
-export type Assumptions = S["Assumptions"];
 export type AssumptionOverrides = S["AssumptionsOverrides-Input"];
 export type ScoreWeights = S["ScoreWeights-Input"];
 export type QualityAssessment = S["QualityAssessment"];

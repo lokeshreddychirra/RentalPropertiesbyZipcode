@@ -13,7 +13,15 @@ from dataclasses import dataclass, field
 from app.core.config import Settings, get_settings
 
 from .airdna import AirDNAProvider
-from .base import Geocoder, ListingProvider, MarketProvider, RentProvider, StrProvider, TaxProvider, ValueProvider
+from .base import (
+    Geocoder,
+    ListingProvider,
+    MarketProvider,
+    RentProvider,
+    StrProvider,
+    TaxProvider,
+    ValueProvider,
+)
 from .demo import DemoProvider
 from .mapbox import MapboxGeocoder
 from .rentcast import RentCastProvider

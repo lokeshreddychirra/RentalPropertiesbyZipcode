@@ -16,7 +16,14 @@ from app.api.v1.searches import parse_bbox, parse_polygon
 from app.core.config import get_settings
 from app.core.db import session_scope
 from app.core.errors import AppError, NotFoundError, UpstreamError
-from app.models.tables import FavoriteProperty, Property, PropertyListing, RentEstimate, ShortTermRentalEstimate, ValueEstimate
+from app.models.tables import (
+    FavoriteProperty,
+    Property,
+    PropertyListing,
+    RentEstimate,
+    ShortTermRentalEstimate,
+    ValueEstimate,
+)
 from app.providers.base import BudgetExceeded, PropertyType, ProviderError
 from app.providers.registry import get_providers
 from app.providers.usage import PROVIDER_SPECS

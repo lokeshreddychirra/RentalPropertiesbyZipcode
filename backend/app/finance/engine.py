@@ -27,7 +27,7 @@ from decimal import Decimal
 from .inputs import Assumptions
 from .money import HUNDRED, ONE, TWELVE, ZERO, clamp, frac, money, pct, ratio
 from .mortgage import Loan, build_loan
-from .results import CashLine, ExpenseLine, LoanSummary, StrategyResult, Strategy, StrDetail
+from .results import CashLine, ExpenseLine, LoanSummary, Strategy, StrategyResult, StrDetail
 
 DAYS_IN_MONTH = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 DAYS_IN_YEAR = Decimal("365")

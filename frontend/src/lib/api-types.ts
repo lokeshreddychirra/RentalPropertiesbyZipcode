@@ -81,7 +81,11 @@ export interface paths {
         };
         /** Get Preferences */
         get: operations["get_preferences_api_v1_auth_preferences_get"];
-        /** Put Preferences */
+        /**
+         * Put Preferences
+         * @description Update saved defaults. Only the fields present in the request are changed;
+         *     send `null` for `default_assumptions` or `score_weights` to clear them.
+         */
         put: operations["put_preferences_api_v1_auth_preferences_put"];
         post?: never;
         delete?: never;
@@ -1089,22 +1093,22 @@ export interface components {
             /** Bedrooms */
             bedrooms: number;
             /** Median */
-            median?: string | null;
+            median?: number | null;
             /** Average */
-            average?: string | null;
+            average?: number | null;
             /** Low */
-            low?: string | null;
+            low?: number | null;
             /** High */
-            high?: string | null;
+            high?: number | null;
             /**
              * Count
              * @default 0
              */
             count: number;
             /** Median Price Per Sqft */
-            median_price_per_sqft?: string | null;
+            median_price_per_sqft?: number | null;
             /** Median Days On Market */
-            median_days_on_market?: string | null;
+            median_days_on_market?: number | null;
         };
         /** BedroomYield */
         BedroomYield: {
@@ -1947,9 +1951,9 @@ export interface components {
             /** Month */
             month: string;
             /** Median Rent */
-            median_rent?: string | null;
+            median_rent?: number | null;
             /** Median Sale Price */
-            median_sale_price?: string | null;
+            median_sale_price?: number | null;
             /** Rental Listings */
             rental_listings?: number | null;
             /** Sale Listings */
@@ -1962,33 +1966,33 @@ export interface components {
             /** Zip Code */
             zip_code: string;
             /** Median Rent */
-            median_rent?: string | null;
+            median_rent?: number | null;
             /** Average Rent */
-            average_rent?: string | null;
+            average_rent?: number | null;
             /**
              * Rental Listings
              * @default 0
              */
             rental_listings: number;
             /** Median Rent Per Sqft */
-            median_rent_per_sqft?: string | null;
+            median_rent_per_sqft?: number | null;
             /** Rental Median Days On Market */
-            rental_median_days_on_market?: string | null;
+            rental_median_days_on_market?: number | null;
             /** Rent By Bedrooms */
             rent_by_bedrooms?: components["schemas"]["BedroomStat"][];
             /** Median Sale Price */
-            median_sale_price?: string | null;
+            median_sale_price?: number | null;
             /** Average Sale Price */
-            average_sale_price?: string | null;
+            average_sale_price?: number | null;
             /**
              * Sale Listings
              * @default 0
              */
             sale_listings: number;
             /** Median Price Per Sqft */
-            median_price_per_sqft?: string | null;
+            median_price_per_sqft?: number | null;
             /** Sale Median Days On Market */
-            sale_median_days_on_market?: string | null;
+            sale_median_days_on_market?: number | null;
             /** Sale By Bedrooms */
             sale_by_bedrooms?: components["schemas"]["BedroomStat"][];
             /** History */
@@ -2141,17 +2145,23 @@ export interface components {
             /** Query */
             query: string;
         };
-        /** Preferences */
+        /**
+         * Preferences
+         * @description Omitted fields are left unchanged on update.
+         */
         "Preferences-Input": {
             default_assumptions?: components["schemas"]["AssumptionsOverrides-Input"] | null;
             score_weights?: components["schemas"]["ScoreWeights-Input"] | null;
-            notification_settings?: components["schemas"]["NotificationSettings"];
+            notification_settings?: components["schemas"]["NotificationSettings"] | null;
         };
-        /** Preferences */
+        /**
+         * Preferences
+         * @description Omitted fields are left unchanged on update.
+         */
         "Preferences-Output": {
             default_assumptions?: components["schemas"]["AssumptionsOverrides-Output"] | null;
             score_weights?: components["schemas"]["ScoreWeights-Output"] | null;
-            notification_settings?: components["schemas"]["NotificationSettings"];
+            notification_settings?: components["schemas"]["NotificationSettings"] | null;
         };
         /** PriceEventOut */
         PriceEventOut: {
@@ -3734,11 +3744,11 @@ export interface components {
             registration_enabled: boolean;
             /** Freshness */
             freshness: {
-                [key: string]: unknown;
+                [key: string]: number;
             };
             /** Limits */
             limits: {
-                [key: string]: unknown;
+                [key: string]: number;
             };
         };
         /** Unsupported */

@@ -46,8 +46,8 @@ class SystemStatus(BaseModel):
     geocoding_enabled: bool
     str_provider_enabled: bool
     registration_enabled: bool
-    freshness: dict[str, Any]
-    limits: dict[str, Any]
+    freshness: dict[str, float]
+    limits: dict[str, float]
 
 
 @router.get("/status", response_model=SystemStatus)

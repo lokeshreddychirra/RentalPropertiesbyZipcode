@@ -47,9 +47,11 @@ class NotificationSettings(BaseModel):
 
 
 class Preferences(BaseModel):
+    """Omitted fields are left unchanged on update."""
+
     default_assumptions: AssumptionOverrides | None = None  # type: ignore[valid-type]
     score_weights: ScoreWeights | None = None
-    notification_settings: NotificationSettings = Field(default_factory=NotificationSettings)
+    notification_settings: NotificationSettings | None = None
 
 
 def _user_out(user: User) -> UserOut:
@@ -108,11 +110,9 @@ async def me(user: OptionalUser) -> SessionOut:
     return SessionOut(user=_user_out(user) if user else None)
 
 
-@router.get("/preferences", response_model=Preferences)
-async def get_preferences(user: CurrentUser, session: Session) -> Any:
-    row = await session.get(UserPreference, user.id)
+def _preferences(row: UserPreference | None) -> Preferences:
     if row is None:
-        return Preferences()
+        return Preferences(notification_settings=NotificationSettings())
     return Preferences.model_validate(
         {
             "default_assumptions": row.default_assumptions or None,
@@ -122,13 +122,25 @@ async def get_preferences(user: CurrentUser, session: Session) -> Any:
     )
 
 
+@router.get("/preferences", response_model=Preferences)
+async def get_preferences(user: CurrentUser, session: Session) -> Any:
+    return _preferences(await session.get(UserPreference, user.id))
+
+
 @router.put("/preferences", response_model=Preferences)
 async def put_preferences(body: Preferences, user: CurrentUser, session: Session) -> Preferences:
+    """Update saved defaults. Only the fields present in the request are changed;
+    send `null` for `default_assumptions` or `score_weights` to clear them."""
     row = await session.get(UserPreference, user.id)
     if row is None:
-        row = UserPreference(user_id=user.id)
+        row = UserPreference(user_id=user.id, default_assumptions={}, score_weights={}, notification_settings={})
         session.add(row)
-    row.default_assumptions = body.default_assumptions.model_dump(mode="json", exclude_none=True) if body.default_assumptions else {}
-    row.score_weights = body.score_weights.model_dump(mode="json") if body.score_weights else {}
-    row.notification_settings = body.notification_settings.model_dump()
-    return body
+    sent = body.model_fields_set
+    if "default_assumptions" in sent:
+        row.default_assumptions = body.default_assumptions.model_dump(mode="json", exclude_none=True) if body.default_assumptions else {}
+    if "score_weights" in sent:
+        row.score_weights = body.score_weights.model_dump(mode="json") if body.score_weights else {}
+    if "notification_settings" in sent and body.notification_settings is not None:
+        row.notification_settings = body.notification_settings.model_dump()
+    await session.flush()
+    return _preferences(row)

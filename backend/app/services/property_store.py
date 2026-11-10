@@ -28,7 +28,14 @@ from app.models.tables import (
     StrRegulation,
     ValueEstimate,
 )
-from app.providers.base import Comparable, RentEstimateRecord, StrEstimateRecord, SubjectProperty, TaxRecord, ValueEstimateRecord
+from app.providers.base import (
+    Comparable,
+    RentEstimateRecord,
+    StrEstimateRecord,
+    SubjectProperty,
+    TaxRecord,
+    ValueEstimateRecord,
+)
 from app.providers.demo import demo_legality
 from app.providers.usage import PROVIDER_SPECS
 from app.schemas.analysis import LegalityInfo, PriceReduction, PropertyContext, RentInfo, StrInfo

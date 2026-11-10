@@ -14,6 +14,8 @@ from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
+from app.finance.results import Num
+
 PropertyType = Literal["single_family", "condo", "townhouse", "multi_family", "manufactured", "apartment", "land", "other"]
 PROPERTY_TYPES: tuple[str, ...] = ("single_family", "condo", "townhouse", "multi_family", "manufactured", "apartment", "land", "other")
 PROPERTY_TYPE_LABELS = {
@@ -206,19 +208,19 @@ class TaxRecord(BaseModel):
 
 class BedroomStat(BaseModel):
     bedrooms: int
-    median: Decimal | None = None
-    average: Decimal | None = None
-    low: Decimal | None = None
-    high: Decimal | None = None
+    median: Num | None = None
+    average: Num | None = None
+    low: Num | None = None
+    high: Num | None = None
     count: int = 0
-    median_price_per_sqft: Decimal | None = None
-    median_days_on_market: Decimal | None = None
+    median_price_per_sqft: Num | None = None
+    median_days_on_market: Num | None = None
 
 
 class MarketHistoryPoint(BaseModel):
     month: str  # YYYY-MM
-    median_rent: Decimal | None = None
-    median_sale_price: Decimal | None = None
+    median_rent: Num | None = None
+    median_sale_price: Num | None = None
     rental_listings: int | None = None
     sale_listings: int | None = None
 
@@ -226,17 +228,17 @@ class MarketHistoryPoint(BaseModel):
 class MarketStats(BaseModel):
     provider: str
     zip_code: str
-    median_rent: Decimal | None = None
-    average_rent: Decimal | None = None
+    median_rent: Num | None = None
+    average_rent: Num | None = None
     rental_listings: int = 0
-    median_rent_per_sqft: Decimal | None = None
-    rental_median_days_on_market: Decimal | None = None
+    median_rent_per_sqft: Num | None = None
+    rental_median_days_on_market: Num | None = None
     rent_by_bedrooms: list[BedroomStat] = Field(default_factory=list)
-    median_sale_price: Decimal | None = None
-    average_sale_price: Decimal | None = None
+    median_sale_price: Num | None = None
+    average_sale_price: Num | None = None
     sale_listings: int = 0
-    median_price_per_sqft: Decimal | None = None
-    sale_median_days_on_market: Decimal | None = None
+    median_price_per_sqft: Num | None = None
+    sale_median_days_on_market: Num | None = None
     sale_by_bedrooms: list[BedroomStat] = Field(default_factory=list)
     history: list[MarketHistoryPoint] = Field(default_factory=list)
     fetched_at: datetime
