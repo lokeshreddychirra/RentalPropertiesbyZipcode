@@ -110,7 +110,7 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
             <Metric label="Cash-on-cash" value={pct(summary.cash_on_cash_pct)} tone={signTone(summary.cash_on_cash_pct)} hint="Annual pre-tax cash flow ÷ total cash invested" />
             <Metric label="Cash flow" value={`${usd(summary.monthly_cash_flow)}/mo`} tone={signTone(summary.monthly_cash_flow)} hint="After operating expenses and debt service" />
             <Metric label="Upfront cash" value={usd(summary.total_cash_invested)} hint="Down payment, closing, reserves and set-up costs" />
-            <Metric label="Basis" value={strategyLabel} hint={card.recommendation} sub={card.recommendation_conditional ? "Verify STR rules" : undefined} />
+            <Metric label="Based on" value={key === "str" ? "STR" : "LTR"} hint={`Metrics shown for the ${strategyLabel.toLowerCase()} rental scenario. ${card.recommendation}`} sub={card.recommendation_conditional ? "Verify STR rules" : undefined} />
           </dl>
         ) : (
           <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">

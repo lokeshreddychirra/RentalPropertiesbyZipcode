@@ -141,7 +141,7 @@ export function DemoTag({ className }: { className?: string }) {
 export function Metric({ label, value, tone, hint, sub }: { label: string; value: React.ReactNode; tone?: string; hint?: string; sub?: React.ReactNode }) {
   const body = (
     <div className="min-w-0">
-      <dt className="truncate text-[11px] text-muted-foreground">{label}</dt>
+      <dt className="text-[11px] leading-tight text-muted-foreground">{label}</dt>
       <dd className={cn("tnum truncate text-sm font-semibold", tone)}>{value}</dd>
       {sub ? <dd className="truncate text-[11px] text-muted-foreground">{sub}</dd> : null}
     </div>

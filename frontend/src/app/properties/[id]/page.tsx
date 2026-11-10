@@ -288,8 +288,8 @@ export default function PropertyPage() {
 
           <Tabs value={tab} onValueChange={setTab}>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="scrollbar-thin max-w-full overflow-x-auto">
-                <TabsList>
+              <div className="max-w-full">
+                <TabsList className="h-auto flex-wrap justify-start">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="financials">Financial model</TabsTrigger>
                   <TabsTrigger value="forecast">Forecast</TabsTrigger>
