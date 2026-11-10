@@ -21,6 +21,16 @@ from .usage import UsageTracker, get_usage_tracker
 logger = logging.getLogger(__name__)
 
 
+def _provider_reason(response: httpx.Response) -> str:
+    """The provider's own explanation of a refusal (e.g. "subscription inactive"), if it sent one."""
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    message = body.get("message") or body.get("error") if isinstance(body, dict) else None
+    return f": {str(message)[:200]}" if message else ""
+
+
 class RateLimiter:
     """Spaces requests at least ``1 / rate`` seconds apart (per process)."""
 
@@ -107,7 +117,7 @@ class ProviderHTTPClient:
             if status == 404 and not_found_ok:
                 return None
             if status in (401, 403):
-                raise ProviderAuthError(self.provider, f"authentication failed (HTTP {status}) — check the API key and plan", status_code=status)
+                raise ProviderAuthError(self.provider, f"access was refused (HTTP {status}){_provider_reason(response)} — check the API key and subscription", status_code=status)
             if status == 429 or status >= 500:
                 if attempt <= self._max_retries:
                     await asyncio.sleep(self._retry_after(response) or self._backoff(attempt))

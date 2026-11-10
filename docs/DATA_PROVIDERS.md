@@ -69,6 +69,18 @@ production; nothing is ever stored in the browser or the repository.
 * Review RentCast's terms for your plan regarding caching, redistribution and attribution.
   The app displays "Listing and rent data provided by RentCast" on property pages.
 
+**Requests per search.** One search uses roughly: 1 request per 500 listings per location,
+1 market-statistics request per ZIP code found (cached for `MARKET_STATS_TTL_DAYS`), and up to
+`RENT_AVM_TOP_N` rent-estimate requests. Opening a property's analysis page requests its rent
+estimate if it has none. On a small plan, lower `RENT_AVM_TOP_N` and set the monthly request
+limit under Settings → API usage & budgets to your plan's quota (the first account registered
+is the administrator). Budget environment variables only seed the initial values; after first
+start they are managed in Settings.
+
+**Inactive subscription.** RentCast answers `403 billing/subscription-inactive` until an API
+plan is activated at <https://app.rentcast.io/app/api>. The app reports that message on the
+search instead of returning results.
+
 > The adapter was written from RentCast's public API reference and is covered by tests using
 > recorded-shape fixtures. It could not be exercised against the live API from the build
 > environment, so run one live search and check `Settings → API usage` for errors when you

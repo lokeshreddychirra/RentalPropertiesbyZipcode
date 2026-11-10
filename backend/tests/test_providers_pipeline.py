@@ -147,9 +147,10 @@ async def test_rentcast_retries_rate_limits_and_reports_auth_errors(app):
     assert attempts["n"] == 3 and estimate.rent == D("1850") and len(estimate.comparables) == 1
     await provider.aclose()
 
-    denied = make_rentcast(lambda request: httpx.Response(401, json={"message": "bad key"}))
-    with pytest.raises(ProviderAuthError):
+    denied = make_rentcast(lambda request: httpx.Response(403, json={"error": "billing/subscription-inactive", "message": "The provided API key is not associated with an active API subscription."}))
+    with pytest.raises(ProviderAuthError) as refused:
         await denied.market_stats("30720")
+    assert "active API subscription" in refused.value.message  # the provider's own reason reaches the user
     await denied.aclose()
 
     missing = make_rentcast(lambda request: httpx.Response(404, json={}))
