@@ -68,7 +68,35 @@ function Gallery({ detail }: { detail: PropertyDetail }) {
   );
 }
 
-function ListingFacts({ detail }: { detail: PropertyDetail }) {
+function TaxLookup({ id }: { id: string }) {
+  const client = useQueryClient();
+  const [busy, setBusy] = React.useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      className="ml-1 text-xs font-normal underline underline-offset-2 hover:text-foreground disabled:opacity-60"
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const result = await api.taxRecord(id);
+          if (result.available) {
+            toast.success(`Tax record found: ${usd(result.annual_amount)} for ${result.year}`);
+            await Promise.all([client.invalidateQueries({ queryKey: ["property", id] }), client.invalidateQueries({ queryKey: ["analysis"] })]);
+          } else toast.info(result.reason ?? "No public tax record was found.");
+        } catch (error) {
+          toast.error(errorMessage(error));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {busy ? "Looking up…" : "Look up public record (1 provider request)"}
+    </button>
+  );
+}
+
+function ListingFacts({ detail, canLookupTax }: { detail: PropertyDetail; canLookupTax: boolean }) {
   const ctx = detail.context;
   const facts: [string, React.ReactNode][] = [
     ["Property type", titleCase(ctx.property_type)],
@@ -81,7 +109,17 @@ function ListingFacts({ detail }: { detail: PropertyDetail }) {
     ["Days on market", ctx.days_on_market ?? "—"],
     ["Listed", shortDate(ctx.listed_date)],
     ["HOA fee", ctx.hoa_fee_monthly != null ? `${usd(ctx.hoa_fee_monthly)}/mo` : "Not reported"],
-    ["Property tax", ctx.property_tax_annual != null ? `${usd(ctx.property_tax_annual)}/yr · ${ctx.property_tax_source ?? ""}` : "Not reported — estimated"],
+    [
+      "Property tax",
+      ctx.property_tax_annual != null ? (
+        `${usd(ctx.property_tax_annual)}/yr · ${ctx.property_tax_source ?? ""}`
+      ) : (
+        <span key="tax">
+          Not reported — estimated
+          {canLookupTax ? <TaxLookup id={ctx.id} /> : null}
+        </span>
+      ),
+    ],
     ["County", ctx.county ?? "—"],
     ["MLS", detail.mls_name ? `${detail.mls_name}${detail.mls_number ? ` #${detail.mls_number}` : ""}` : "—"],
     ["Listing agent / office", [detail.agent_name, detail.office_name].filter(Boolean).join(" · ") || "—"],
@@ -93,7 +131,7 @@ function ListingFacts({ detail }: { detail: PropertyDetail }) {
       {facts.map(([label, value]) => (
         <div key={label} className="min-w-0">
           <dt className="text-[11px] text-muted-foreground">{label}</dt>
-          <dd className="truncate text-sm font-medium">{value}</dd>
+          <dd className="text-sm font-medium [overflow-wrap:anywhere]">{value}</dd>
         </div>
       ))}
     </dl>
@@ -135,7 +173,7 @@ export default function PropertyPage() {
   }, [estimateStamp, rent.data?.fetched_now, value.data?.fetched_now, strEstimate.data?.fetched_now, client, id]);
 
   const body: AnalysisBody = React.useMemo(
-    () => ({ property_id: id, overrides: debouncedOverrides, defaults: defaultsOrNull, weights, include: INCLUDE, custom_financing: customLoans }),
+    () => ({ property_id: id, overrides: debouncedOverrides, defaults: defaultsOrNull, weights, include: INCLUDE, custom_financing: customLoans.map(({ name, down_payment_pct, interest_rate_pct, loan_term_years }) => ({ name, down_payment_pct, interest_rate_pct, loan_term_years })) }),
     [id, debouncedOverrides, defaultsOrNull, weights, customLoans],
   );
   const analysisKey = JSON.stringify([body, estimateStamp]);
@@ -150,7 +188,29 @@ export default function PropertyPage() {
   const activeStrategy: Strategy = strategy ?? analysis?.primary_strategy ?? "ltr";
   const pending = analysisQuery.isFetching || debouncedOverrides !== overrides;
 
-  const setField = React.useCallback((section: AssumptionSection, field: string, next: number | boolean | null | undefined) => {
+  // Signed-in users: financing scenarios are saved to the account and restored here.
+  const presets = useQuery({ queryKey: ["financing-presets", user?.id], queryFn: api.financingPresets, enabled: !!user, staleTime: 60_000 });
+  const presetsLoaded = React.useRef(false);
+  React.useEffect(() => {
+    if (presets.data && !presetsLoaded.current) {
+      presetsLoaded.current = true;
+      setCustomLoans(presets.data.slice(0, 5).map((p) => ({ id: p.id, name: p.name, down_payment_pct: p.down_payment_pct, interest_rate_pct: p.interest_rate_pct, loan_term_years: p.loan_term_years })));
+    }
+  }, [presets.data]);
+  const changeCustomLoans = (next: CustomLoan[]) => {
+    const current = customLoans;
+    setCustomLoans(next);
+    if (!user) return;
+    for (const removed of current.filter((loan) => loan.id && !next.some((n) => n.id === loan.id))) void api.deleteFinancingPreset(removed.id as string).catch(() => undefined);
+    for (const added of next.filter((loan) => !loan.id)) {
+      void api
+        .createFinancingPreset({ name: added.name, down_payment_pct: added.down_payment_pct, interest_rate_pct: added.interest_rate_pct, loan_term_years: added.loan_term_years })
+        .then((saved) => setCustomLoans((loans) => loans.map((loan) => (loan === added ? { ...loan, id: saved.id } : loan))))
+        .catch(() => toast.error("The financing scenario could not be saved to your account."));
+    }
+  };
+
+  const setField = React.useCallback((section: AssumptionSection, field: string, next: unknown) => {
     setOverrides((current) => {
       const group = { ...((current[section] ?? {}) as Record<string, unknown>) };
       if (next === undefined) delete group[field];
@@ -323,7 +383,7 @@ export default function PropertyPage() {
                   <CardDescription>{data.attribution.join(" · ") || "Listing data"}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <ListingFacts detail={data} />
+                  <ListingFacts detail={data} canLookupTax={!isDemoMode && !ctx.is_demo} />
                   {data.description ? <p className="border-t pt-4 text-sm leading-relaxed text-muted-foreground">{data.description}</p> : <p className="border-t pt-4 text-xs text-muted-foreground">No listing description is supplied by the data provider.</p>}
                 </CardContent>
               </Card>
@@ -377,9 +437,11 @@ export default function PropertyPage() {
             </TabsContent>
 
             <TabsContent value="financials">{analysis ? <FinancialModel analysis={analysis} strategy={activeStrategy} /> : <Skeleton className="h-96 w-full" />}</TabsContent>
-            <TabsContent value="forecast">{analysis ? <ForecastSection analysis={analysis} strategy={activeStrategy} /> : <Skeleton className="h-96 w-full" />}</TabsContent>
+            <TabsContent value="forecast">
+              {analysis ? <ForecastSection analysis={analysis} strategy={activeStrategy} onImprovementsChange={(next) => setField("forecast", "capital_improvements", next)} /> : <Skeleton className="h-96 w-full" />}
+            </TabsContent>
             <TabsContent value="financing">
-              {analysis ? <FinancingSection analysis={analysis} strategy={activeStrategy} custom={customLoans} onCustomChange={setCustomLoans} /> : <Skeleton className="h-96 w-full" />}
+              {analysis ? <FinancingSection analysis={analysis} strategy={activeStrategy} custom={customLoans} onCustomChange={changeCustomLoans} /> : <Skeleton className="h-96 w-full" />}
             </TabsContent>
             <TabsContent value="scenarios">{analysis ? <ScenarioSection analysis={analysis} strategy={activeStrategy} /> : <Skeleton className="h-96 w-full" />}</TabsContent>
             <TabsContent value="risk">{analysis ? <RiskSection analysis={analysis} /> : <Skeleton className="h-96 w-full" />}</TabsContent>

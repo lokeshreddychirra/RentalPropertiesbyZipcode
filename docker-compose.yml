@@ -1,0 +1,102 @@
+# Local development stack:  cp .env.example .env && docker compose up --build
+# Web UI  http://localhost:3000      API docs  http://localhost:8000/api/docs
+name: propertyyield
+
+x-backend-env: &backend-env
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-propertyyield}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-propertyyield}
+  REDIS_URL: redis://redis:6379/0
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+  SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+  DATA_MODE: ${DATA_MODE:-auto}
+  RENTCAST_API_KEY: ${RENTCAST_API_KEY:-}
+  RENTCAST_MONTHLY_REQUEST_BUDGET: ${RENTCAST_MONTHLY_REQUEST_BUDGET:-1000}
+  RENTCAST_MONTHLY_COST_BUDGET_USD: ${RENTCAST_MONTHLY_COST_BUDGET_USD:-50}
+  AIRDNA_API_KEY: ${AIRDNA_API_KEY:-}
+  AIRDNA_BASE_URL: ${AIRDNA_BASE_URL:-https://api.airdna.co/api/enterprise/v2}
+  MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  LLM_MODEL: ${LLM_MODEL:-claude-opus-5-5}
+  LLM_EFFORT: ${LLM_EFFORT:-medium}
+  RENT_AVM_TOP_N: ${RENT_AVM_TOP_N:-15}
+  STR_ESTIMATE_TOP_N: ${STR_ESTIMATE_TOP_N:-5}
+  MAX_LISTINGS_PER_SEARCH: ${MAX_LISTINGS_PER_SEARCH:-10000}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-}
+  PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-propertyyield}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-propertyyield}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: ./backend
+    command: ["migrate"]
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: ./backend
+    command: ["api"]
+    environment: *backend-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    build: ./backend
+    command: ["worker"]
+    environment: *backend-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    environment:
+      BACKEND_URL: http://api:8000
+      MAPBOX_PUBLIC_TOKEN: ${MAPBOX_PUBLIC_TOKEN:-}
+      MAPBOX_STYLE: ${MAPBOX_STYLE:-mapbox://styles/mapbox/light-v11}
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  pgdata:

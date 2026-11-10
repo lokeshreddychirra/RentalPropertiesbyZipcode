@@ -127,7 +127,7 @@ const UNIT_AFFIX: Record<Unit, { prefix?: string; suffix?: string }> = {
 interface Props {
   analysis: PropertyAnalysis;
   overrides: AssumptionOverrides;
-  onChange: (section: AssumptionSection, field: string, value: number | boolean | null | undefined) => void;
+  onChange: (section: AssumptionSection, field: string, value: unknown) => void;
   onResetAll: () => void;
   pending?: boolean;
   className?: string;

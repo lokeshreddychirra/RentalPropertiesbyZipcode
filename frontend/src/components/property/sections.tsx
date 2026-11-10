@@ -414,7 +414,62 @@ export function MortgageCard({ analysis }: { analysis: PropertyAnalysis }) {
 
 const HORIZONS = [1, 5, 10, 15, 30];
 
-export function ForecastSection({ analysis, strategy }: { analysis: PropertyAnalysis; strategy: Strategy }) {
+interface Improvement {
+  year: number;
+  amount: number;
+  label: string;
+}
+
+function CapitalImprovements({ items, onChange }: { items: Improvement[]; onChange: (next: Improvement[] | undefined) => void }) {
+  const [draft, setDraft] = React.useState<Improvement>({ year: 5, amount: 8000, label: "Roof" });
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Planned capital improvements</CardTitle>
+        <CardDescription>One-off costs (roof, HVAC, remodel) deducted from cash flow in the year they occur. No added value is assumed.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {items.length ? (
+          <ul className="flex flex-wrap gap-2">
+            {items.map((item, i) => (
+              <li key={`${item.year}-${item.label}-${i}`} className="inline-flex items-center gap-2 rounded-full border bg-background py-1 pl-3 pr-1 text-xs">
+                <span className="tnum">
+                  Year {item.year} · {item.label} · {usd(item.amount)}
+                </span>
+                <button type="button" className="rounded-full px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={`Remove ${item.label} in year ${item.year}`} onClick={() => { const next = items.filter((_, j) => j !== i); onChange(next.length ? next : undefined); }}>
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <form
+          className="grid grid-cols-2 items-end gap-3 sm:grid-cols-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (items.length >= 40 || draft.amount <= 0) return;
+            onChange([...items, { ...draft, label: draft.label.trim() || "Capital improvement" }].sort((a, b) => a.year - b.year));
+          }}
+        >
+          <Field label="Description" htmlFor="ci-label" className="col-span-2 sm:col-span-1">
+            <Input id="ci-label" value={draft.label} maxLength={80} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
+          </Field>
+          <Field label="Year" htmlFor="ci-year">
+            <NumberInput id="ci-year" value={draft.year} onValueChange={(v) => v !== null && setDraft({ ...draft, year: Math.min(Math.max(Math.round(v), 1), 40) })} />
+          </Field>
+          <Field label="Cost" htmlFor="ci-amount">
+            <NumberInput id="ci-amount" prefix="$" value={draft.amount} onValueChange={(v) => v !== null && setDraft({ ...draft, amount: Math.max(v, 0) })} />
+          </Field>
+          <Button type="submit" variant="outline">
+            Add improvement
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function ForecastSection({ analysis, strategy, onImprovementsChange }: { analysis: PropertyAnalysis; strategy: Strategy; onImprovementsChange?: (next: Improvement[] | undefined) => void }) {
   const [years, setYears] = React.useState(10);
   const forecast: ForecastResult | null | undefined = strategy === "ltr" ? analysis.forecast_ltr : analysis.forecast_str;
   const result = strategy === "ltr" ? analysis.long_term : analysis.short_term;
@@ -502,6 +557,8 @@ export function ForecastSection({ analysis, strategy }: { analysis: PropertyAnal
         </CardContent>
       </Card>
 
+      {onImprovementsChange ? <CapitalImprovements items={(fc.capital_improvements ?? []) as Improvement[]} onChange={onImprovementsChange} /> : null}
+
       <details className="rounded-lg border bg-card">
         <summary className="cursor-pointer px-5 py-3 text-sm font-medium">Year-by-year projection table</summary>
         <Table>
@@ -544,6 +601,7 @@ export function ForecastSection({ analysis, strategy }: { analysis: PropertyAnal
 // ----------------------------------------------------------------------------- financing scenarios
 
 export interface CustomLoan {
+  id?: string;
   name: string;
   down_payment_pct: number;
   interest_rate_pct: number;

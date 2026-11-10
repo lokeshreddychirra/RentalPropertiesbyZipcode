@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TypeVar
 
 import anthropic
 from pydantic import BaseModel
@@ -25,7 +24,6 @@ from app.providers.usage import get_usage_tracker
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T", bound=BaseModel)
 PROVIDER_KEY = "anthropic"
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
@@ -48,7 +46,7 @@ def _get_client() -> anthropic.AsyncAnthropic:
     return _client
 
 
-async def generate_structured(*, system: str, user: str, schema: type[T], purpose: str) -> T:
+async def generate_structured[T: BaseModel](*, system: str, user: str, schema: type[T], purpose: str) -> T:
     """Ask the model for a response matching ``schema``. Raises LLMUnavailable on any failure."""
     settings = get_settings()
     client = _get_client()

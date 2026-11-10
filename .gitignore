@@ -22,3 +22,5 @@ next-env.d.ts
 coverage/
 playwright-report/
 test-results/
+# Deployment parameters may reference secrets
+infra/azure/main.parameters.json
