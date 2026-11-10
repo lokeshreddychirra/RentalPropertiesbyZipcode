@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.api.deps import CurrentUser, Session
 from app.core.errors import ConflictError, NotFoundError
+from app.finance.results import Num
 from app.finance.scoring import ScoreWeights
 from app.models.tables import FavoriteProperty, FinancingScenario, Notification, Property, Watchlist
 from app.schemas.analysis import AssumptionOverrides
@@ -170,8 +171,8 @@ async def delete_watchlist(watchlist_id: uuid.UUID, user: CurrentUser, session: 
 
 class FinancingIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
-    down_payment_pct: Decimal = Field(ge=0, le=100)
-    interest_rate_pct: Decimal = Field(ge=0, le=30)
+    down_payment_pct: Num = Field(ge=0, le=100)
+    interest_rate_pct: Num = Field(ge=0, le=30)
     loan_term_years: int = Field(ge=1, le=40)
     property_id: uuid.UUID | None = None
 

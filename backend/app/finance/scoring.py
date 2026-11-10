@@ -63,13 +63,13 @@ REGULATORY_POINTS: dict[str, Decimal] = {
 
 
 class ScoreWeights(BaseModel):
-    cash_on_cash: Decimal = Field(default=Decimal("25"), ge=0, le=100)
-    cap_rate: Decimal = Field(default=Decimal("20"), ge=0, le=100)
-    cash_flow: Decimal = Field(default=Decimal("20"), ge=0, le=100)
-    dscr: Decimal = Field(default=Decimal("10"), ge=0, le=100)
-    rent_confidence: Decimal = Field(default=Decimal("10"), ge=0, le=100)
-    market_risk: Decimal = Field(default=Decimal("10"), ge=0, le=100)
-    data_quality: Decimal = Field(default=Decimal("5"), ge=0, le=100)
+    cash_on_cash: Num = Field(default=Decimal("25"), ge=0, le=100)
+    cap_rate: Num = Field(default=Decimal("20"), ge=0, le=100)
+    cash_flow: Num = Field(default=Decimal("20"), ge=0, le=100)
+    dscr: Num = Field(default=Decimal("10"), ge=0, le=100)
+    rent_confidence: Num = Field(default=Decimal("10"), ge=0, le=100)
+    market_risk: Num = Field(default=Decimal("10"), ge=0, le=100)
+    data_quality: Num = Field(default=Decimal("5"), ge=0, le=100)
 
     @model_validator(mode="after")
     def _non_zero(self) -> ScoreWeights:

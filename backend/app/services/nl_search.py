@@ -364,7 +364,7 @@ def _finalize(
             warnings.append("No location was recognised. Add a city and state, a ZIP code, or a state to run this search.")
         else:
             warnings.extend(messages)
-        filters = {k: (str(v) if isinstance(v, Decimal) else v) for k, v in filters.items()}
+        filters = {k: (float(v) if isinstance(v, Decimal) else v) for k, v in filters.items()}
     return NLParseResult(query=query, engine=engine, filters=filters, sort=sort, interpreted=interpreted, unsupported=unsupported, warnings=list(dict.fromkeys(warnings)), valid=valid)
 
 

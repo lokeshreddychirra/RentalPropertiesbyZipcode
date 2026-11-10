@@ -247,8 +247,8 @@ async def test_ai_explanation_falls_back_to_grounded_rules(client):
 async def test_natural_language_parse(client):
     body = (await client.post(f"{API}/searches/parse", json={"query": "Find houses under $300,000 near Atlanta with at least $500 per month cash flow in good school districts"})).json()
     assert body["engine"] == "rules" and body["valid"]
-    assert body["filters"]["cities"] == ["Atlanta, GA"] and body["filters"]["max_price"] == "300000"
-    assert body["filters"]["min_cash_flow"] == "500" and body["filters"]["property_types"] == ["single_family"]
+    assert body["filters"]["cities"] == ["Atlanta, GA"] and body["filters"]["max_price"] == 300000
+    assert body["filters"]["min_cash_flow"] == 500 and body["filters"]["property_types"] == ["single_family"]
     assert body["unsupported"][0]["criterion"] == "school quality"
     job = await run_search(client, body["filters"])
     assert job["status"] == "completed"
@@ -291,12 +291,12 @@ async def test_auth_favorites_saved_searches_and_admin(client):
     assert len((await client.get(f"{API}/searches/saved")).json()) == 1
 
     analysis = await client.post(f"{API}/analysis/saved", json={"property_id": card["id"], "name": "First pass", "overrides": {"financing": {"down_payment_pct": 30}}})
-    assert analysis.status_code == 201 and analysis.json()["overrides"]["financing"]["down_payment_pct"] == "30"
+    assert analysis.status_code == 201 and analysis.json()["overrides"]["financing"]["down_payment_pct"] == 30
     assert len((await client.get(f"{API}/analysis/saved")).json()) == 1
 
     prefs = await client.put(f"{API}/auth/preferences", json={"default_assumptions": {"financing": {"interest_rate_pct": 6.5}}, "score_weights": {"cash_flow": 40}})
     assert prefs.status_code == 200
-    assert (await client.get(f"{API}/auth/preferences")).json()["default_assumptions"]["financing"]["interest_rate_pct"] == "6.5"
+    assert (await client.get(f"{API}/auth/preferences")).json()["default_assumptions"]["financing"]["interest_rate_pct"] == 6.5
 
     budget = await client.put(f"{API}/system/budgets/rentcast", json={"monthly_request_limit": 250})
     assert budget.status_code == 200 and budget.json()["monthly_request_limit"] == 250

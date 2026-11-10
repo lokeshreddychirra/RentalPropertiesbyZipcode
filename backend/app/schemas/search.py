@@ -41,8 +41,8 @@ SORT_LABELS: dict[str, str] = {
     "newest": "Newest listings",
 }
 
-Pct = Annotated[Decimal, Field(ge=-100, le=1000)]
-Price = Annotated[Decimal, Field(ge=0, le=100_000_000)]
+Pct = Annotated[Num, Field(ge=-100, le=1000)]
+Price = Annotated[Num, Field(ge=0, le=100_000_000)]
 
 
 class SearchFilters(BaseModel):
@@ -60,7 +60,7 @@ class SearchFilters(BaseModel):
     min_net_yield: Pct | None = None
     min_cap_rate: Pct | None = None
     min_cash_on_cash: Pct | None = None
-    min_cash_flow: Annotated[Decimal, Field(ge=-100000, le=1000000)] | None = None
+    min_cash_flow: Annotated[Num, Field(ge=-100000, le=1000000)] | None = None
     min_beds: Annotated[int, Field(ge=0, le=20)] | None = None
     max_beds: Annotated[int, Field(ge=0, le=20)] | None = None
     property_types: list[PropertyType] = Field(default_factory=list)
