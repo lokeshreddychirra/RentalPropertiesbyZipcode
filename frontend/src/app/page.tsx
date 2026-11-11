@@ -3,7 +3,6 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { HeroScene } from "@/components/marketing/hero-scene";
 import { Reveal, TaglineReveal } from "@/components/marketing/reveal";
 import { SearchExperience } from "@/components/search/search-experience";
 import { Button } from "@/components/ui/button";
@@ -76,7 +75,7 @@ function Hero({ compact }: { compact: boolean }) {
   return (
     <div>
       {/* Two lines, broken where the thought breaks; on phones the text flows and balances. */}
-      <h1 className="heading-4 hero-gradient max-w-[680px] text-balance pb-1 sm:heading-3 lg:heading-4 xl:heading-2">
+      <h1 className="heading-4 hero-gradient max-w-[680px] text-balance pb-1 sm:heading-3 lg:heading-2">
         Know what a rental earns <br className="hidden sm:block" />
         <span className="text-brand">before you make an offer</span>
       </h1>
@@ -88,33 +87,6 @@ function Hero({ compact }: { compact: boolean }) {
         {!user ? " · Your first ZIP search is free" : null}
       </p>
     </div>
-  );
-}
-
-/** 3D neighbourhood with floating glass cards. The figures are an illustration, and say so. */
-function HeroVisual() {
-  return (
-    <figure className="relative">
-      <div className="relative h-72 sm:h-80 lg:h-[400px]">
-        <HeroScene className="absolute inset-0" />
-        <div className="glass-card float-a absolute left-0 top-6 sm:left-4" aria-hidden>
-          <p className="caption-5 text-muted-foreground">Cash flow</p>
-          <p className="tnum body-1 text-positive">+$612 / mo</p>
-        </div>
-        <div className="glass-card float-b absolute right-0 top-1/3 sm:right-2" aria-hidden>
-          <p className="caption-5 text-muted-foreground">Cash on cash</p>
-          <p className="tnum body-1">14.7%</p>
-        </div>
-        <div className="glass-card float-c absolute bottom-6 left-6 flex items-center gap-3 sm:left-12" aria-hidden>
-          <span className="tnum caption-3 flex size-10 items-center justify-center rounded-full border-4 border-positive/70 text-positive">88</span>
-          <span>
-            <span className="caption-5 block text-muted-foreground">Investment score</span>
-            <span className="body-4 block">Strong</span>
-          </span>
-        </div>
-      </div>
-      <figcaption className="caption-5 text-center text-muted-foreground">Illustration with example figures</figcaption>
-    </figure>
   );
 }
 
@@ -276,7 +248,7 @@ function QuickStart() {
 export default function DashboardPage() {
   return (
     <React.Suspense fallback={<div className="p-6"><Skeleton className="h-40 w-full" /></div>}>
-      <SearchExperience basePath="/" heading={(active) => <Hero compact={active} />} heroAside={<HeroVisual />} idle={<QuickStart />} />
+      <SearchExperience basePath="/" heading={(active) => <Hero compact={active} />} idle={<QuickStart />} />
     </React.Suspense>
   );
 }
