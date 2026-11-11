@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bookmark, BookmarkCheck, ExternalLink, GitCompareArrows, Save, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkCheck, ExternalLink, GitCompareArrows, Images, Save, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { MapView } from "@/components/map/map-view";
 import { AssumptionsPanel } from "@/components/property/assumptions-panel";
@@ -33,7 +33,7 @@ import { Dialog, DialogContent, DialogTrigger, Hint, Tabs, TabsContent, TabsList
 import { api, ApiError, errorMessage, type AnalysisBody } from "@/lib/api";
 import { useApp, useFavoriteIds, useSession, useStatus } from "@/lib/store";
 import type { AssumptionOverrides, AssumptionSection, PropertyDetail, Strategy } from "@/lib/types";
-import { cn, num, pct, relativeTime, shortDate, titleCase, usd } from "@/lib/utils";
+import { cn, num, pct, relativeTime, shortDate, titleCase, usd, zillowUrl } from "@/lib/utils";
 
 const INCLUDE: AnalysisBody["include"] = ["forecast", "scenarios", "sensitivity", "financing"];
 
@@ -321,20 +321,21 @@ export default function PropertyPage() {
             </Button>
           </Hint>
           {ctx.listing_url ? (
-            <Button asChild>
+            <Button asChild variant="outline">
               <a href={ctx.listing_url} target="_blank" rel="noopener noreferrer">
                 <ExternalLink /> Open original listing
               </a>
             </Button>
-          ) : (
-            <Hint content={ctx.is_demo ? "Demo property — there is no real listing to open." : `${ctx.listing_source ?? "The data provider"} does not supply a link to the original listing page. Use the MLS number to look it up.`}>
-              <span tabIndex={0}>
-                <Button disabled>
-                  <ExternalLink /> Original listing unavailable
-                </Button>
-              </span>
+          ) : null}
+          {!ctx.is_demo && ctx.formatted_address ? (
+            <Hint content="Opens this address on Zillow in a new tab. Zillow's page may show a different status or price than this listing.">
+              <Button asChild>
+                <a href={zillowUrl(ctx.formatted_address)} target="_blank" rel="noopener noreferrer">
+                  <Images /> Photos on Zillow
+                </a>
+              </Button>
             </Hint>
-          )}
+          ) : null}
         </div>
       </header>
 

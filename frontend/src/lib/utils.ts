@@ -70,3 +70,9 @@ export function signTone(value: N): string {
   if (value < 0) return "text-negative";
   return "text-foreground";
 }
+
+/** Zillow's address lookup page for a US address (e.g. "123 Main St, Memphis, TN 38116"); opens the home's page when Zillow knows it. */
+export function zillowUrl(address: string): string {
+  const slug = address.trim().replace(/[#/?]/g, " ").replace(/\s+/g, "-");
+  return `https://www.zillow.com/homes/${encodeURIComponent(slug).replace(/%2C/g, ",")}_rb/`;
+}
