@@ -226,7 +226,7 @@ def test_empty_results_explain_which_filter_matched_nothing():
 
     records = [parse_listing(rentcast_listing(i, yearBuilt=1950 + i, price=100000 + i * 1000)) for i in range(20)]
     message = explain_no_matches(records, SearchFilters(zip_codes=["30720"], min_year_built=1980))
-    assert "20 active listings" in message and "none are built 1980 or later (homes here were built 1950–1969)" in message
+    assert "There are homes for sale in this area" in message and "none are built 1980 or later (homes here were built 1950–1969)" in message
     both = explain_no_matches(records, SearchFilters(zip_codes=["30720"], min_year_built=1960, max_price=105000))
     assert "none match all of your filters together" in both
     assert explain_no_matches(records, SearchFilters(zip_codes=["30720"], max_price=50000)).count("$100,000–$119,000") == 1
@@ -340,3 +340,44 @@ async def test_partial_results_are_not_served_from_the_search_cache(app):
     await get_redis().set(f"searchjob:{job.id}:result", '{"cards": []}')
     again, needs_run_again = await search_service.create_job(request)
     assert needs_run_again and again.id != job.id
+
+
+async def test_listing_pages_are_cached_in_postgres_and_survive_a_redis_flush(app):
+    from app.core.redis import get_redis
+    from app.providers.base import ListingPage
+    from app.services import response_cache
+    from app.services.search import _cached_page
+
+    calls = []
+
+    class StubProvider:
+        key = "stub-cache"
+        name = "Stub"
+        page_size = 500
+
+        def request_params(self, query):
+            return {"zipCode": query.zip_code}
+
+        async def search_listings(self, query, offset, limit):
+            calls.append(offset)
+            return ListingPage(listings=[parse_listing(rentcast_listing(1))], has_more=False, next_offset=0)
+
+    provider, query = StubProvider(), ListingQuery(zip_code="30269")
+    first = await _cached_page(provider, query, 0, refresh=False)
+    await get_redis().flushdb()  # a Redis restart or eviction must not cause a repeat paid request
+    second = await _cached_page(provider, ListingQuery(zip_code="30269", min_price=1), 0, refresh=False)
+    assert calls == [0] and second == first
+    await _cached_page(provider, query, 0, refresh=True)
+    assert calls == [0, 0]
+
+    await response_cache.set_json("listings:expired-test", {"a": 1}, ttl_seconds=1)
+    assert await response_cache.get_json("listings:expired-test") == {"a": 1}
+
+    from sqlalchemy import update
+
+    from app.core.db import session_scope
+    from app.models.tables import ProviderResponseCache
+
+    async with session_scope() as session:
+        await session.execute(update(ProviderResponseCache).where(ProviderResponseCache.key == "listings:expired-test").values(expires_at=datetime(2000, 1, 1, tzinfo=UTC)))
+    assert await response_cache.get_json("listings:expired-test") is None

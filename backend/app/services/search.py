@@ -32,7 +32,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.core.config import get_settings
 from app.core.db import session_scope
-from app.core.redis import cache_get_json, cache_set_json, get_redis
+from app.core.redis import get_redis
 from app.finance.scoring import ScoreWeights
 from app.models.tables import MarketSnapshot
 from app.providers.base import (
@@ -63,7 +63,7 @@ from app.schemas.search import (
     StrategySummary,
 )
 
-from . import property_store
+from . import property_store, response_cache
 from .analysis import analyze
 from .dedupe import merge_listings
 
@@ -264,12 +264,12 @@ async def _cached_page(provider: ListingProvider, query: ListingQuery, offset: i
     cacheable = provider.key != "demo"
     key = _page_cache_key("listings", provider, query, offset)
     if cacheable and not refresh:
-        cached = await cache_get_json(key)
+        cached = await response_cache.get_json(key)
         if cached is not None:
             return ListingPage.model_validate(cached)
     page = await provider.search_listings(query, offset=offset, limit=provider.page_size)
     if cacheable:
-        await cache_set_json(key, page.model_dump(mode="json"), settings.listing_cache_ttl_seconds)
+        await response_cache.set_json(key, page.model_dump(mode="json"), settings.listing_cache_ttl_seconds)
     return page
 
 
@@ -444,7 +444,7 @@ async def _fetch_rentals(provider: Any, queries: list[ListingQuery], refresh: bo
         offset = 0
         for _ in range(max(settings.area_rent_max_pages, 1)):
             key = _page_cache_key("rentals", provider, ListingQuery(**query.model_dump(include={"zip_code", "city", "state", "latitude", "longitude", "radius_miles"})), offset)
-            cached = None if refresh else await cache_get_json(key)
+            cached = None if refresh else await response_cache.get_json(key)
             if cached is not None:
                 page = ListingPage.model_validate(cached)
             else:
@@ -454,7 +454,7 @@ async def _fetch_rentals(provider: Any, queries: list[ListingQuery], refresh: bo
                     return records, f"{provider.name} budget reached ({exc.message})"
                 except ProviderError as exc:
                     return records, f"{provider.name} rental listings unavailable ({exc.message})"
-                await cache_set_json(key, page.model_dump(mode="json"), settings.listing_cache_ttl_seconds)
+                await response_cache.set_json(key, page.model_dump(mode="json"), settings.listing_cache_ttl_seconds)
             records.extend(page.listings)
             if not page.has_more or page.next_offset <= offset:
                 break
@@ -672,7 +672,7 @@ def explain_no_matches(records: list[ListingRecord], filters: SearchFilters) -> 
         ok = [r for r in active if r.days_on_market is not None and r.days_on_market <= filters.max_days_on_market]
         checks.append((f"listed within {filters.max_days_on_market} days", ok, "every listing has been on the market longer"))
     blockers = [f"none are {label} ({detail})" for label, ok, detail in checks if not ok]
-    lead = f"{len(active)} active listing{'s' if len(active) != 1 else ''} were found in this area, but "
+    lead = "There are homes for sale in this area, but "
     if blockers:
         return lead + "; ".join(blockers) + ". Widen that filter to see results."
     if checks:
@@ -696,7 +696,7 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
     # -- fetch ---------------------------------------------------------------
     async def on_page(pages: int, count: int) -> None:
         state.stage, state.pages_fetched, state.listings_found = "fetching_listings", pages, count
-        state.message = f"Fetched {count:,} listings ({pages} page{'s' if pages != 1 else ''})"
+        state.message = "Loading listings"
         state.percent = min(10 + pages * 3, 45)
         await progress(state)
 
@@ -707,7 +707,7 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
 
     # -- dedupe + persist -----------------------------------------------------
     merged = merge_listings(fetched.records)
-    state.stage, state.message, state.percent = "screening", f"Screening {len(merged):,} unique listings", 50
+    state.stage, state.message, state.percent = "screening", "Screening listings against your filters", 50
     await progress(state)
     if merged:
         async with session_scope() as session:

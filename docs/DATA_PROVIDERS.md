@@ -119,7 +119,7 @@ have one:
 | Mechanism | Detail |
 |---|---|
 | Staged retrieval | Listings (paginated) → free local filters → one `/markets` call per ZIP for conservative area rents → property-level AVM only for the top `RENT_AVM_TOP_N` candidates (re-checked for `RENT_AVM_MAX_ROUNDS` rounds) → STR estimates only for the top `STR_ESTIMATE_TOP_N` or on demand |
-| Caching | Listing pages in Redis (`LISTING_CACHE_TTL_SECONDS`), estimates and market stats in PostgreSQL with freshness thresholds (`*_TTL_DAYS`), identical searches served from cache |
+| Caching | Listing and rental-listing pages in PostgreSQL (`provider_response_cache`, `LISTING_CACHE_TTL_SECONDS`), shared by every user and safe from Redis restarts; estimates and market stats in PostgreSQL with freshness thresholds (`*_TTL_DAYS`), identical searches served from cache |
 | Budgets | Monthly request and cost limits per provider, enforced before every call |
 | Disclosure | Hitting a budget, rate limit, provider error or `MAX_LISTINGS_PER_SEARCH` marks the search **partial** with the reason shown to the user |
 | Accounting | Every call is recorded (`provider_api_usage`); Settings shows requests, errors and estimated cost |

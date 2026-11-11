@@ -46,7 +46,7 @@ are ranked by calculated returns — not by price or estimated rent.
 |---|---|
 | Frontend | Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui-style components, Recharts, Mapbox GL (MapLibre fallback) |
 | Backend | Python, FastAPI, Pydantic v2, SQLAlchemy 2 (async), Alembic |
-| Data | PostgreSQL + PostGIS, Redis (cache, job state, rate limits) |
+| Data | PostgreSQL + PostGIS (data and paid-response cache), Redis (job state, rate limits) |
 | Jobs | arq workers on Redis (search jobs, scheduled alert checks) |
 | Finance | Pure Python `Decimal` engine |
 | Providers | RentCast, AirDNA, Mapbox, Anthropic Claude — all behind adapters |

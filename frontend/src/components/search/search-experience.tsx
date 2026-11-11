@@ -44,8 +44,7 @@ function Progress({ job }: { job: SearchJob | undefined }) {
         <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${Math.max(percent, 3)}%` }} />
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        Every page of matching listings is retrieved, then screened with low-cost area estimates before any premium estimate is requested.
-        {progress && progress.listings_found > 0 ? ` ${progress.listings_found.toLocaleString()} listings so far.` : ""}
+        Listings in your ZIP code are screened against your filters, then every match is analysed for rent, cash flow and yield.
       </p>
     </Card>
   );
@@ -528,14 +527,14 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
             <div>
               <h2 className="text-lg font-semibold tracking-tight" data-testid="result-count">
                 {data ? `${data.total.toLocaleString()} ${data.total === 1 ? "property" : "properties"}` : "Loading results…"}
-                {data && data.summary.total !== data.total ? <span className="font-normal text-muted-foreground"> of {data.summary.total.toLocaleString()} analysed</span> : null}
               </h2>
               <p className="text-xs text-muted-foreground">
-                {data ? `${data.summary.total.toLocaleString()} of ` : ""}
-                {job.listings_fetched?.toLocaleString() ?? 0} for-sale listings in{" "}
-                {filters?.zip_codes?.length === 1 ? `ZIP ${filters.zip_codes[0]}` : "these ZIP codes"} match your filters · ranked by calculated returns
+                Ranked by calculated returns
                 {isAdmin ? (
                   <>
+                    {" · Admin: "}
+                    {data ? `${data.summary.total.toLocaleString()} of ` : ""}
+                    {job.listings_fetched?.toLocaleString() ?? 0} listings matched
                     {" · "}
                     <button
                       type="button"
@@ -611,11 +610,11 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
           {data && data.total === 0 ? (
             <EmptyState icon={<SearchX />} title="No properties match these filters">
               {data.summary.total > 0
-                ? `${data.summary.total.toLocaleString()} listings were analysed, but none meet the return thresholds${activeBbox || polygonParam ? " inside the selected map area" : ""}. Try lowering the yield, cap-rate or cash-flow minimums.`
+                ? `None of the matching homes meet your return thresholds${activeBbox || polygonParam ? " inside the selected map area" : ""}. Try lowering the yield, cap-rate or cash-flow minimums.`
                 : job.data_mode === "demo"
                   ? "The demo dataset only covers a set of sample markets (listed under the search panel). Try Atlanta, GA or ZIP 30269."
                   : (job.listings_fetched ?? 0) > 0
-                    ? `${job.listings_fetched} listings were found in this ZIP code, but none match your filters. The note above shows which filter to widen.`
+                    ? "There are homes for sale in this ZIP code, but none match your filters. The note above shows which filter to widen."
                     : "No active listings were found in this ZIP code right now."}
             </EmptyState>
           ) : null}
