@@ -499,3 +499,66 @@ main h1:not(.hero-gradient):not(.plain) {
   filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.8);
 }
 .dark .illustration .ill-tree { filter: brightness(0.5); }
+
+/* ---------------------------------------------------------------- app shell on phones
+ * Safe areas (notch, home indicator, Android system bars) for the installed app and the
+ * iOS / Android apps. In an ordinary browser tab every inset is 0, so nothing moves. */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  /* Height the bottom tab bar takes, so content and trays can clear it. */
+  --tabbar-space: calc(4.75rem + var(--sab));
+}
+@media (min-width: 1024px) {
+  :root {
+    --tabbar-space: 0px;
+  }
+}
+body {
+  padding-top: var(--sat);
+  padding-left: var(--sal);
+  padding-right: var(--sar);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+/* Solid strip behind the status bar so scrolled content never shows through it. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--sat);
+  background: hsl(var(--background));
+  z-index: 45;
+  pointer-events: none;
+}
+.safe-sticky {
+  top: calc(0.5rem + var(--sat));
+}
+.tabbar {
+  bottom: calc(0.5rem + var(--sab));
+  left: calc(0.5rem + var(--sal));
+  right: calc(0.5rem + var(--sar));
+}
+/* Side drawers clear the status bar and home indicator. */
+[role="dialog"].inset-y-0 {
+  padding-top: calc(1.25rem + var(--sat));
+  padding-bottom: calc(1.25rem + var(--sab));
+}
+[role="dialog"].inset-y-0 > button[aria-label="Close"] {
+  top: calc(1rem + var(--sat));
+}
+/* Inside the installed app, text is not selectable by accident on long press of controls. */
+@media (display-mode: standalone) {
+  nav,
+  button {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+.native nav,
+.native button {
+  -webkit-user-select: none;
+  user-select: none;
+}

@@ -24,6 +24,9 @@ calculated returns — not by price or estimated rent.
   export to CSV or PDF.
 * **Save** searches, properties, watchlists, financing presets and evaluations (optional
   accounts), with background alerts for new matches, price reductions and return thresholds.
+* **Use it anywhere**: on the web, on mobile web (bottom tab bar), installed from the browser
+  as an app with an offline page, or as iOS and Android apps built with Capacitor
+  ([docs/MOBILE.md](docs/MOBILE.md)).
 * **Control cost**: staged retrieval, caching, per-provider budgets, usage tracking, and
   explicit disclosure whenever results are partial.
 
@@ -47,6 +50,7 @@ calculated returns — not by price or estimated rent.
 | Jobs | arq workers on Redis (search jobs, scheduled alert checks) |
 | Finance | Pure Python `Decimal` engine |
 | Providers | RentCast, AirDNA, Mapbox, Anthropic Claude — all behind adapters |
+| Mobile | Installable web app (manifest, service worker); Capacitor 8 iOS and Android apps in `mobile/` |
 | Deploy | Docker Compose locally; Render Blueprint; Azure Container Apps (Bicep); provider-independent images |
 
 ## Quick start
@@ -79,6 +83,7 @@ regulation registry).
 | [docs/DATA_PROVIDERS.md](docs/DATA_PROVIDERS.md) | Demo vs live mode, activating providers, what each provider does and does not supply, budgets, adding an MLS feed |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, search pipeline, AI grounding, data model, security |
 | [docs/PLANS.md](docs/PLANS.md) | Plans, quotas, pricing rationale, Stripe setup, admin user management |
+| [docs/MOBILE.md](docs/MOBILE.md) | Mobile web, installing as an app, building the iOS and Android apps, publishing to the App Store and Google Play |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker Compose, local setup, Azure Container Apps, other platforms, production checklist |
 
 ## API

@@ -5,9 +5,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Menu, Moon, Search, Sun, TrendingUp, User as UserIcon, Users } from "@/components/ui/icons";
+import { AppRuntime } from "@/components/layout/app-runtime";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/overlays";
+import { Dialog, DialogContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/overlays";
 import { api } from "@/lib/api";
 import { useAccount, useApp, useSession, useStatus } from "@/lib/store";
 import { cn, relativeTime } from "@/lib/utils";
@@ -244,6 +245,38 @@ function ThemeToggle() {
   );
 }
 
+/** Phone and tablet tab bar: the main destinations one tap away, plus "More" for everything else. */
+function BottomNav({ onMore, moreOpen }: { onMore: () => void; moreOpen: boolean }) {
+  const pathname = usePathname();
+  const { user } = useSession();
+  const { compare } = useApp();
+  const tabs: { href: string; label: string; icon: typeof Search; badge?: number }[] = [
+    { href: "/", label: "Search", icon: Search },
+    { href: "/compare", label: "Compare", icon: GitCompareArrows, badge: compare.length },
+    { href: "/market", label: "Markets", icon: BarChart3 },
+    user ? { href: "/saved", label: "Saved", icon: Bookmark } : { href: "/pricing", label: "Plans", icon: CreditCard },
+  ];
+  const item = "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[11px] font-medium leading-none transition-colors";
+  return (
+    <nav aria-label="Primary" className="tabbar glass-strong fixed inset-x-2 z-40 flex items-stretch gap-1 rounded-2xl p-1 lg:hidden">
+      {tabs.map(({ href, label, icon: Icon, badge }) => {
+        const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+        return (
+          <Link key={href} href={href} aria-current={active ? "page" : undefined} className={cn(item, active ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:text-foreground")}>
+            <Icon className={cn("size-6", active && "text-primary")} weight={active ? "fill" : "regular"} aria-hidden />
+            <span className="max-w-full truncate">{label}</span>
+            {badge ? <span className="tnum absolute right-[calc(50%-1.25rem)] top-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">{badge}</span> : null}
+          </Link>
+        );
+      })}
+      <button type="button" onClick={onMore} aria-expanded={moreOpen} aria-label="More pages" className={cn(item, moreOpen ? "text-foreground" : "text-muted-foreground hover:text-foreground")}>
+        <Menu className="size-6" aria-hidden />
+        <span>More</span>
+      </button>
+    </nav>
+  );
+}
+
 function Aurora() {
   return (
     <div className="aurora" aria-hidden>
@@ -262,6 +295,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (bare) {
     return (
       <div className="min-h-screen">
+        <AppRuntime />
         <Aurora />
         <DemoBanner />
         <div key={pathname} className="page-enter">
@@ -277,24 +311,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:text-primary-foreground">
         Skip to content
       </a>
-      <aside className="glass sticky top-2 m-2 hidden h-[calc(100vh-1rem)] w-60 shrink-0 flex-col gap-6 rounded-2xl px-3 py-4 lg:flex">
+      <aside className="glass safe-sticky sticky m-2 hidden h-[calc(100dvh-1rem-var(--sat))] w-60 shrink-0 flex-col gap-6 rounded-2xl px-3 py-4 lg:flex">
         <Brand />
         <NavLinks />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <DemoBanner />
-        <header className="glass sticky top-2 z-30 mx-2 mt-2 flex h-14 items-center gap-3 rounded-2xl px-3 lg:ml-0 lg:mr-4 lg:px-4">
-          <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation">
-                <Menu />
-              </Button>
-            </DialogTrigger>
-            <DialogContent side="left" title="PropertyYield AI">
-              <NavLinks onNavigate={() => setMobileOpen(false)} />
-            </DialogContent>
-          </Dialog>
+        <header className="glass safe-sticky sticky z-30 mx-2 mt-2 flex h-14 items-center gap-3 rounded-2xl px-3 lg:ml-0 lg:mr-4 lg:px-4">
           <div className="lg:hidden">
             <Brand />
           </div>
@@ -309,7 +333,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <UserMenu />
           </div>
         </header>
-        <main id="main" className="flex-1">
+        <main id="main" className="flex-1 pb-[var(--tabbar-space)] lg:pb-0">
           <div key={pathname} className="page-enter">
             {children}
           </div>
@@ -318,6 +342,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           Estimates and projections are for research only and are not financial, legal or tax advice. Verify listings, rents and taxes independently before investing.
         </footer>
       </div>
+      <BottomNav onMore={() => setMobileOpen(true)} moreOpen={mobileOpen} />
+      <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+        <DialogContent side="left" title="PropertyYield AI">
+          <NavLinks onNavigate={() => setMobileOpen(false)} />
+        </DialogContent>
+      </Dialog>
+      <AppRuntime />
     </div>
   );
 }

@@ -13,3 +13,4 @@ infra
 **/.env.*
 !.env.example
 backend/tests
+mobile

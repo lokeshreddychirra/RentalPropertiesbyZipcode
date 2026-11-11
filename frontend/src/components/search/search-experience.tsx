@@ -288,7 +288,7 @@ export function CompareTray() {
   const { compare, removeCompare, clearCompare } = useApp();
   if (!compare.length) return null;
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 shadow-[0_-4px_16px_rgb(16_24_40/0.08)] backdrop-blur" role="region" aria-label="Properties selected for comparison">
+    <div className="fixed inset-x-0 bottom-[var(--tabbar-space)] z-40 border-t bg-card/95 shadow-[0_-4px_16px_rgb(16_24_40/0.08)] backdrop-blur" role="region" aria-label="Properties selected for comparison">
       <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-4 py-3 lg:pl-64">
         <span className="text-sm font-medium">
           Compare <span className="tnum text-muted-foreground">({compare.length}/{MAX_COMPARE})</span>

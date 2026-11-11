@@ -9,9 +9,12 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: { default: "PropertyYield AI", template: "%s · PropertyYield AI" },
   description: "Find and analyse residential investment properties by rental yield, cash flow and risk-adjusted return.",
+  applicationName: "PropertyYield AI",
+  appleWebApp: { capable: true, title: "PropertyYield", statusBarStyle: "black-translucent" },
+  formatDetection: { telephone: false },
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#0b0e17" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#0b0e17" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -25,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <TooltipProvider>
             <AppShell>{children}</AppShell>
           </TooltipProvider>
-          <Toaster position="bottom-right" richColors closeButton />
+          <Toaster position="bottom-right" richColors closeButton mobileOffset={{ bottom: "calc(var(--tabbar-space) + 8px)" }} />
         </Providers>
       </body>
     </html>
