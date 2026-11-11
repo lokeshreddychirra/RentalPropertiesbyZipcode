@@ -72,21 +72,6 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function DataModeNote() {
-  const { data } = useStatus();
-  const { user } = useSession();
-  if (!data || user?.role !== "admin") return null;
-  return (
-    <div className="rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
-      <div className="mb-1 flex items-center gap-2">
-        <span className={cn("size-2 rounded-full", data.data_mode === "live" ? "bg-positive" : "bg-[#7c3aed]")} aria-hidden />
-        <span className="font-semibold text-foreground">{data.data_mode === "live" ? "Live data" : "Demo data"}</span>
-      </div>
-      {data.data_mode === "live" ? "Listings and estimates come from your configured providers." : "Sample properties only. Add API keys in Settings to search live listings."}
-    </div>
-  );
-}
-
 function Notifications() {
   const { user } = useSession();
   const client = useQueryClient();
@@ -262,9 +247,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-6 border-r bg-card px-3 py-4 lg:flex">
         <Brand />
         <NavLinks />
-        <div className="mt-auto">
-          <DataModeNote />
-        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -278,9 +260,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </DialogTrigger>
             <DialogContent side="left" title="PropertyYield AI">
               <NavLinks onNavigate={() => setMobileOpen(false)} />
-              <div className="mt-6">
-                <DataModeNote />
-              </div>
             </DialogContent>
           </Dialog>
           <div className="lg:hidden">
