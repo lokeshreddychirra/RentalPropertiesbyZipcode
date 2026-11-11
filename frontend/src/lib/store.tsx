@@ -4,7 +4,7 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError } from "./api";
-import type { AssumptionOverrides, AssumptionSection, PropertyCard, ScoreWeights, SessionOut, SystemStatus, User } from "./types";
+import type { Account, AssumptionOverrides, AssumptionSection, PropertyCard, ScoreWeights, SessionOut, SystemStatus, User } from "./types";
 
 // ----------------------------------------------------------------------------- local persistence
 
@@ -183,6 +183,12 @@ export function useSession(): { user: User | null; loading: boolean; refresh: ()
       await client.invalidateQueries({ queryKey: ["favorite-ids"] });
     },
   };
+}
+
+/** The signed-in user's plan and usage (null for guests). */
+export function useAccount() {
+  const { user } = useSession();
+  return useQuery<Account>({ queryKey: ["account", user?.id], queryFn: api.account, enabled: !!user, staleTime: 30_000 });
 }
 
 export function useFavoriteIds() {

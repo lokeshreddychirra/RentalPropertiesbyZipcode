@@ -18,7 +18,7 @@ export default function SearchPage() {
         }
         idle={
           <EmptyState icon={<Search />} title="Set a location to begin">
-            Enter a city and state, one or more ZIP codes, or a state above.
+            Enter a 5-digit ZIP code above to analyse every listing in it.
           </EmptyState>
         }
       />

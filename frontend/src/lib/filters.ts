@@ -75,6 +75,19 @@ export interface ParsedLocation {
  * ("TN"), and cities with their state ("Memphis, TN" or "Memphis TN"); several entries can be
  * separated with ";".
  */
+/** Searches are by ZIP code only (for now): accepts "38116" or "38116, 38118". */
+export function parseZips(text: string): { zip_codes: string[]; error: string | null } {
+  const tokens = text.split(/[\s,;]+/).filter(Boolean);
+  const zips: string[] = [];
+  for (const token of tokens) {
+    if (!/^\d{5}$/.test(token)) {
+      return { zip_codes: [], error: /^\d+$/.test(token) ? `“${token}” is not a 5-digit ZIP code.` : "Search by ZIP code — for example 38116. City and state searches are coming later." };
+    }
+    if (!zips.includes(token)) zips.push(token);
+  }
+  return { zip_codes: zips, error: null };
+}
+
 export function parseLocation(text: string): ParsedLocation {
   const out: ParsedLocation = { zip_codes: [], cities: [], state: null, error: null };
   for (const raw of text.split(/[;\n]+/)) {
@@ -114,13 +127,8 @@ export function formatLocation(filters: Partial<SearchFilters> | null | undefine
 
 export function formToFilters(form: FilterForm): SearchFilters {
   const filters: SearchFilters = { strategy: form.strategy };
-  const location = parseLocation(form.location);
-  if (location.zip_codes.length) filters.zip_codes = location.zip_codes;
-  if (location.cities.length) filters.cities = location.cities;
-  if (location.state) filters.state = location.state;
-  if (form.county.trim()) filters.county = form.county.trim();
-  if (form.radius) filters.radius_miles = form.radius;
-  if (form.polygon?.length) filters.polygon = form.polygon;
+  const { zip_codes } = parseZips(form.location);
+  if (zip_codes.length) filters.zip_codes = zip_codes;
   const numeric: [keyof SearchFilters, number | null][] = [
     ["min_price", form.minPrice],
     ["max_price", form.maxPrice],

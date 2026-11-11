@@ -70,8 +70,11 @@ async def test_sorting_uses_calculated_metrics(client, sort, key, descending):
     assert all(i >= len(values) for i in unavailable)  # unranked properties always last
 
 
+ATLANTA_ZIPS = ["30310", "30315", "30318", "30331"]
+
+
 async def test_metric_and_listing_filters(client):
-    filters = {"cities": ["Atlanta, GA"], "min_price": 150000, "max_price": 400000, "min_gross_yield": 8, "min_beds": 3, "strategy": "ltr"}
+    filters = {"zip_codes": ATLANTA_ZIPS, "min_price": 150000, "max_price": 400000, "min_gross_yield": 8, "min_beds": 3, "strategy": "ltr"}
     job = await run_search(client, filters)
     data = await results(client, job["id"], page_size=200)
     assert data["total"] > 0
@@ -94,12 +97,10 @@ async def test_identical_search_is_served_from_cache(client):
     assert fresh["id"] != first["id"]
 
 
-async def test_radius_and_polygon_and_map(client):
-    job = await run_search(client, {"cities": ["Atlanta, GA"], "radius_miles": 12})
+async def test_map_points_and_viewport_and_drawn_area_filters(client):
+    job = await run_search(client, {"zip_codes": ATLANTA_ZIPS})
     points = (await client.get(f"{API}/searches/jobs/{job['id']}/map")).json()
     assert points["total"] == job["result_count"] > 100
-    zips = {c["zip_code"] for c in (await results(client, job["id"], page_size=200))["items"]}
-    assert "30032" in zips  # Decatur is inside the radius although it is another city
 
     p = points["points"][0]
     box = f"{p['longitude'] - 0.01},{p['latitude'] - 0.01},{p['longitude'] + 0.01},{p['latitude'] + 0.01}"
@@ -110,15 +111,25 @@ async def test_radius_and_polygon_and_map(client):
     assert 0 < drawn["total"] <= inside["total"] + 5
 
 
-async def test_county_and_state_searches(client):
-    county = await run_search(client, {"county": "Fayette", "state": "GA"})
-    data = await results(client, county["id"], page_size=200)
-    assert data["total"] > 0 and {c["county"] for c in data["items"]} == {"Fayette"}
-    state = await run_search(client, {"state": "TN", "property_types": ["condo", "townhouse"]})
-    assert any("State-wide" in w for w in state["warnings"])
-    state_data = await results(client, state["id"], page_size=200)
-    assert {c["state"] for c in state_data["items"]} == {"TN"}
-    assert {c["property_type"] for c in state_data["items"]} <= {"condo", "townhouse"}
+@pytest.mark.parametrize(
+    "filters",
+    [
+        {"cities": ["Atlanta, GA"]},
+        {"state": "TN"},
+        {"county": "Fayette", "state": "GA"},
+        {"zip_codes": ["30269"], "radius_miles": 10},
+        {"polygon": [[-84.5, 33.7], [-84.4, 33.7], [-84.45, 33.8]]},
+    ],
+)
+async def test_searches_are_by_zip_code_only(client, filters):
+    response = await client.post(f"{API}/searches/run", json={"filters": filters})
+    assert response.status_code == 422 and response.json()["error"]["code"] == "zip_only"
+
+
+async def test_search_requires_an_account(anon_client):
+    response = await anon_client.post(f"{API}/searches/run", json={"filters": {"zip_codes": ["30269"]}})
+    assert response.status_code == 401
+    assert (await anon_client.get(f"{API}/properties/search", params={"zip_codes": ["30269"]})).status_code == 401
 
 
 async def test_validation_errors_are_structured(client):
@@ -250,8 +261,6 @@ async def test_natural_language_parse(client):
     assert body["filters"]["cities"] == ["Atlanta, GA"] and body["filters"]["max_price"] == 300000
     assert body["filters"]["min_cash_flow"] == 500 and body["filters"]["property_types"] == ["single_family"]
     assert body["unsupported"][0]["criterion"] == "school quality"
-    job = await run_search(client, body["filters"])
-    assert job["status"] == "completed"
 
 
 async def test_market_summary(client):
@@ -262,17 +271,18 @@ async def test_market_summary(client):
     assert (await client.get(f"{API}/market/summary")).status_code == 422
 
 
-async def test_auth_favorites_saved_searches_and_admin(client):
+async def test_auth_favorites_saved_searches_and_admin(anon_client):
+    client = anon_client
     assert (await client.get(f"{API}/favorites")).status_code == 401
-    card = await _first_property(client, "46201")
 
     weak = await client.post(f"{API}/auth/register", json={"email": "a@example.com", "password": "short"})
     assert weak.status_code == 422
     admin = await client.post(f"{API}/auth/register", json={"email": "Admin@Example.com", "password": "correct-horse-battery", "name": "Ada"})
-    assert admin.status_code == 201 and admin.json()["user"]["role"] == "admin"  # first account administers
+    assert admin.status_code == 201 and admin.json()["user"]["role"] == "admin"  # listed in ADMIN_EMAILS (or the first account)
     assert "httponly" in admin.headers["set-cookie"].lower()
     assert (await client.post(f"{API}/auth/register", json={"email": "admin@example.com", "password": "correct-horse-battery"})).status_code == 409
     assert (await client.get(f"{API}/auth/me")).json()["user"]["email"] == "admin@example.com"
+    card = await _first_property(client, "46201")
 
     fav = await client.post(f"{API}/favorites", json={"property_id": card["id"], "notes": "Check roof"})
     assert fav.status_code == 201

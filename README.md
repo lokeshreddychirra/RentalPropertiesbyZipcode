@@ -10,7 +10,8 @@ are ranked by calculated returns — not by price or estimated rent.
 
 ## What it does
 
-* **Search** by ZIP, city, county, state, radius or a drawn map area, with price, bedroom,
+* **Search** by ZIP code (accounts required; Free / Pro / Premium plans meter usage — see
+  [docs/PLANS.md](docs/PLANS.md)), with price, bedroom,
   property-type, HOA and days-on-market filters plus return thresholds (gross/net yield, cap
   rate, cash-on-cash, cash flow).
 * **Rank** every match with a deterministic financial engine and a configurable 0–100
@@ -80,6 +81,7 @@ regulation registry).
 | [docs/FINANCIAL_MODEL.md](docs/FINANCIAL_MODEL.md) | Every formula, default assumption, the scoring method, confidence-label rules, badge rules |
 | [docs/DATA_PROVIDERS.md](docs/DATA_PROVIDERS.md) | Demo vs live mode, activating providers, what each provider does and does not supply, budgets, adding an MLS feed |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, search pipeline, AI grounding, data model, security |
+| [docs/PLANS.md](docs/PLANS.md) | Plans, quotas, pricing rationale, Stripe setup, admin user management |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker Compose, local setup, Azure Container Apps, other platforms, production checklist |
 
 ## API
@@ -112,7 +114,7 @@ Errors have the shape `{"error": {"code", "message", "details"}}`.
 ## Development
 
 ```bash
-cd backend && pytest                                              # 81 tests
+cd backend && pytest                                              # 91 tests
 cd frontend && npm run typecheck && npm run lint && npm run build
 ```
 

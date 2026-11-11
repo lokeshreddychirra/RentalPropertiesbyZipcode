@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from app.api.deps import Session, rate_limit
+from app.api.deps import OptionalUser, Session, rate_limit
 from app.core.errors import AppError, NotFoundError
 from app.finance.results import Num
 from app.models.tables import Property
@@ -17,7 +17,7 @@ from app.providers.base import BudgetExceeded, MarketStats, ProviderError
 from app.providers.registry import get_providers
 from app.schemas.analysis import LegalityInfo
 from app.services.property_store import LegalityResolver
-from app.services.search import get_market_stats
+from app.services.search import cached_market_stats, get_market_stats
 
 router = APIRouter(prefix="/market", tags=["market"])
 
@@ -63,6 +63,7 @@ def _ratio(stats: MarketStats) -> tuple[Decimal | None, Decimal | None]:
 @router.get("/summary", response_model=MarketSummary, dependencies=[rate_limit("market", 30, 60)])
 async def market_summary(
     session: Session,
+    user: OptionalUser,
     zip_codes: Annotated[list[str] | None, Query(description="Up to 8 ZIP codes")] = None,
     city: str | None = None,
     state: str | None = None,
@@ -96,7 +97,12 @@ async def market_summary(
     unavailable: list[str] = []
     for zip_code in zips:
         try:
-            stats = await get_market_stats(providers, zip_code)
+            # Only administrators trigger paid market-data requests; everyone else sees stored data
+            # (gathered by searches in that ZIP code).
+            if providers.is_demo or (user is not None and user.role == "admin"):
+                stats = await get_market_stats(providers, zip_code)
+            else:
+                stats = await cached_market_stats(providers, zip_code)
         except BudgetExceeded as exc:
             notes.append(f"Market data for some ZIP codes was not loaded: {exc.provider} budget reached ({exc.message}).")
             unavailable.extend(z for z in zips if z not in {m.stats.zip_code for m in markets} and z not in unavailable)

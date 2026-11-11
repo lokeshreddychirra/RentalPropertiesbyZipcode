@@ -96,9 +96,9 @@ const LIVE_STARTERS: Starter[] = [
 ];
 
 const DEMO_STARTERS: Starter[] = [
-  { label: "Atlanta, GA", sub: "$150k–$400k · gross yield ≥ 8%", filters: { cities: ["Atlanta, GA"], min_price: 150000, max_price: 400000, min_gross_yield: 8, strategy: "both" } },
+  { label: "Atlanta, GA", sub: "ZIP 30310 · gross yield ≥ 8%", filters: { zip_codes: ["30310"], min_gross_yield: 8, strategy: "both" } },
   { label: "Peachtree City, GA", sub: "ZIP 30269 · best cash-on-cash", filters: { zip_codes: ["30269"], strategy: "both" }, sort: "cash_on_cash" },
-  { label: "Memphis, TN", sub: "Positive cash flow", filters: { cities: ["Memphis, TN"], min_cash_flow: 1, strategy: "ltr" }, sort: "cash_flow" },
+  { label: "Memphis, TN", sub: "ZIP 38116 · positive cash flow", filters: { zip_codes: ["38116"], min_cash_flow: 1, strategy: "ltr" }, sort: "cash_flow" },
 ];
 
 const PRINCIPLES: [string, string][] = [
@@ -176,7 +176,7 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <div>
               <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Find rental properties that pay</h1>
-              <p className="mt-1 text-sm text-muted-foreground">Search any US city or ZIP code. Listings are ranked by cash flow, yield and risk-adjusted return.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Search any US ZIP code. Every listing is ranked by cash flow, yield and risk-adjusted return.</p>
             </div>
             <Overview />
           </div>

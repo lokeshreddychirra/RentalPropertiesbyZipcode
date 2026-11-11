@@ -3,8 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { BookmarkPlus, ChevronLeft, ChevronRight, Columns2, GitCompareArrows, Info, LayoutGrid, Map as MapIcon, RefreshCw, SearchX, Table2, X } from "lucide-react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BookmarkPlus, ChevronLeft, ChevronRight, Columns2, GitCompareArrows, Info, LayoutGrid, Lock, Map as MapIcon, RefreshCw, SearchX, Sparkles, Table2, X } from "lucide-react";
 import { toast } from "sonner";
 import { MapView } from "@/components/map/map-view";
 import { ConfidenceBadge, DemoTag, ScoreRing } from "@/components/property/bits";
@@ -66,6 +66,50 @@ function CardSkeletons({ count = 6 }: { count?: number }) {
         </Card>
       ))}
     </div>
+  );
+}
+
+/** Shown instead of results when a guest runs a search: searching needs a (free) account. */
+function SignUpGate() {
+  const next = typeof window !== "undefined" ? window.location.pathname + window.location.search : "/";
+  return (
+    <Card className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+      <span className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Lock className="size-5" aria-hidden />
+      </span>
+      <div>
+        <h2 className="text-lg font-semibold">Create a free account to see results</h2>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+          Your first ZIP code search is free — every listing analysed for cash flow, yield and risk. No card required.
+        </p>
+      </div>
+      <div className="flex flex-wrap justify-center gap-2">
+        <Button asChild>
+          <Link href={`/login?mode=register&next=${encodeURIComponent(next)}`}>Create free account</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href={`/login?next=${encodeURIComponent(next)}`}>Sign in</Link>
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+/** Shown when the plan's allowance is used up (HTTP 402 from the API). */
+function UpgradeCard({ message }: { message: string }) {
+  return (
+    <Card className="flex flex-col items-center gap-3 border-primary/30 px-6 py-10 text-center">
+      <span className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
+        <Sparkles className="size-5" aria-hidden />
+      </span>
+      <div>
+        <h2 className="text-lg font-semibold">Upgrade to keep searching</h2>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">{message}</p>
+      </div>
+      <Button asChild>
+        <Link href="/pricing">See plans</Link>
+      </Button>
+    </Card>
   );
 }
 
@@ -289,8 +333,9 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
   const pathname = usePathname();
   const params = useSearchParams();
   const { defaultsOrNull, weights, hydrated } = useApp();
-  const { user } = useSession();
+  const { user, loading: sessionLoading } = useSession();
   const isAdmin = user?.role === "admin";
+  const queryClient = useQueryClient();
 
   const rawFilters = params.get("f");
   const filters = React.useMemo(() => decodeFilters(rawFilters), [rawFilters]);
@@ -345,8 +390,12 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
 
   const start = useQuery({
     queryKey: ["search-start", requestKey],
-    queryFn: () => api.runSearch(filters as SearchFilters, defaultsOrNull, weights, refreshToken > 0),
-    enabled: !!filters && hydrated,
+    queryFn: async () => {
+      const job = await api.runSearch(filters as SearchFilters, defaultsOrNull, weights, refreshToken > 0);
+      void queryClient.invalidateQueries({ queryKey: ["account"] });
+      return job;
+    },
+    enabled: !!filters && hydrated && !!user,
     staleTime: Infinity,
     gcTime: 10 * 60_000,
     retry: false,
@@ -388,10 +437,12 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
     if (expired) setRefreshToken((token) => token + 1);
   }, [expired]);
 
-  const running = !!filters && (start.isLoading || (!!job && !["completed", "failed"].includes(job.status)));
+  const running = !!filters && !!user && (start.isLoading || (!!job && !["completed", "failed"].includes(job.status)));
+  const planLimit = start.error instanceof ApiError && start.error.status === 402 ? start.error.message : null;
+  const needsAccount = !!filters && !sessionLoading && !user;
   const data = results.data;
   const cards = data?.items ?? [];
-  const startError = start.error ? errorMessage(start.error) : null;
+  const startError = start.error && !(start.error instanceof ApiError && start.error.status === 402) ? errorMessage(start.error) : null;
 
   const pager =
     data && data.total_pages > 1 ? (
@@ -447,6 +498,8 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
       />
 
       {!filters ? idle : null}
+      {needsAccount ? <SignUpGate /> : null}
+      {planLimit ? <UpgradeCard message={planLimit} /> : null}
       {startError ? (
         <Alert tone="error" title="The search could not be started">
           {startError}
@@ -548,11 +601,6 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
                 Only list properties in the visible map area
               </label>
               {area?.length ? <span>Filtered to your drawn area ({area.length} points).</span> : <span>Draw an area on the map to filter results to it.</span>}
-              {area?.length && filters ? (
-                <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => navigate({ filters: { strategy: filters.strategy ?? "both", polygon: area } as SearchFilters })}>
-                  Run a new search for all listings in this area
-                </button>
-              ) : null}
             </div>
           )}
 

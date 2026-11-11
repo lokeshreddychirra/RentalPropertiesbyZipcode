@@ -70,8 +70,43 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), default="user")  # user | admin
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = _created()
+    # Subscription plan: free | pro | premium (see app/services/plans.py).
+    plan: Mapped[str] = mapped_column(String(20), default="free", server_default="free")
+    plan_status: Mapped[str | None] = mapped_column(String(30))  # Stripe subscription status, when billed online
+    plan_renews_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(64))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     preferences: Mapped[UserPreference | None] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan")
+
+
+class PlanConfig(Base):
+    """Administrator overrides for a plan's price and allowances (environment values are the defaults)."""
+
+    __tablename__ = "plan_configs"
+
+    key: Mapped[str] = mapped_column(String(20), primary_key=True)  # free | pro | premium
+    price_usd: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    zip_searches: Mapped[int | None] = mapped_column(Integer)  # None = unlimited
+    property_reports: Mapped[int | None] = mapped_column(Integer)
+    zips_per_search: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = _updated()
+
+
+class UserUsage(Base):
+    """One row per distinct billable item a user consumed in a period (a ZIP searched, a property report)."""
+
+    __tablename__ = "user_usage"
+    __table_args__ = (UniqueConstraint("user_id", "kind", "item", "period"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(30))  # zip_search | property_report
+    item: Mapped[str] = mapped_column(String(64))
+    period: Mapped[str] = mapped_column(String(10))  # "lifetime" or "YYYY-MM"
+    created_at: Mapped[datetime] = _created()
 
 
 class UserPreference(Base):

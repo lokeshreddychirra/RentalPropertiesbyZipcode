@@ -1,4 +1,9 @@
 import type {
+  Account,
+  AdminUser,
+  AdminUsers,
+  PlanInfo,
+  PlansInfo,
   AIExplanationResponse,
   AssumptionOverrides,
   CompareResponse,
@@ -116,6 +121,17 @@ export const api = {
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   preferences: () => request<Preferences>("/auth/preferences"),
   savePreferences: (body: Preferences) => request<Preferences>("/auth/preferences", { method: "PUT", json: body }),
+
+  // --- account, plans and billing
+  account: () => request<Account>("/account"),
+  plans: () => request<PlansInfo>("/account/plans"),
+  checkout: (plan: "pro" | "premium") => request<{ url: string }>("/billing/checkout", { method: "POST", json: { plan } }),
+  billingPortal: () => request<{ url: string }>("/billing/portal", { method: "POST" }),
+  adminUsers: (q?: string) => request<AdminUsers>(`/admin/users${qs({ q: q || undefined })}`),
+  updateUser: (id: string, body: { plan?: string; role?: string; is_active?: boolean; reset_usage?: boolean }) => request<AdminUser>(`/admin/users/${id}`, { method: "PATCH", json: body }),
+  adminPlans: () => request<PlanInfo[]>("/admin/plans"),
+  updatePlan: (key: string, body: { price_usd: number; zip_searches: number | null; property_reports: number | null; zips_per_search: number }) =>
+    request<PlanInfo>(`/admin/plans/${key}`, { method: "PUT", json: body }),
 
   // --- search
   runSearch: (filters: SearchFilters, defaults: AssumptionOverrides | null, weights: ScoreWeights | null, refresh = false) =>

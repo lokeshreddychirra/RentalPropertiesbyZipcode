@@ -9,7 +9,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api.v1 import analysis, auth, favorites, market, properties, searches, system
+from app.api.v1 import account, analysis, auth, favorites, market, properties, searches, system
 from app.core.config import get_settings
 from app.core.db import dispose_engine, session_scope
 from app.core.errors import install_error_handlers
@@ -68,7 +68,7 @@ def create_app() -> FastAPI:
     install_error_handlers(app)
 
     v1 = APIRouter(prefix=settings.api_prefix)
-    for module in (auth, properties, searches, analysis, market, favorites, system):
+    for module in (auth, account, properties, searches, analysis, market, favorites, system):
         v1.include_router(module.router)
     app.include_router(v1)
 

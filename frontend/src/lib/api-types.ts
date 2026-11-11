@@ -94,6 +94,165 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/account/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plans
+         * @description The plans on offer, with prices and allowances (public).
+         */
+        get: operations["list_plans_api_v1_account_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Account
+         * @description The signed-in user's plan and how much of its allowance has been used this period.
+         */
+        get: operations["my_account_api_v1_account_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Checkout
+         * @description Start a Stripe Checkout session for a subscription; the browser is sent to the returned URL.
+         */
+        post: operations["start_checkout_api_v1_billing_checkout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Billing Portal
+         * @description Stripe Billing Portal: change plan, update the card, download invoices or cancel.
+         */
+        post: operations["billing_portal_api_v1_billing_portal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin Plans */
+        get: operations["admin_plans_api_v1_admin_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/plans/{plan_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Admin Update Plan
+         * @description Change a plan's price and allowances. Takes effect immediately for everyone on the plan.
+         *
+         *     The price shown here is for display; the amount actually charged is the Stripe price.
+         */
+        put: operations["admin_update_plan_api_v1_admin_plans__plan_key__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Users
+         * @description Every account with plan, sign-in activity and usage. Passwords are hashed and never returned.
+         */
+        get: operations["admin_users_api_v1_admin_users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Admin Update User
+         * @description Change a user's plan (manual billing), role or access, or reset this period's usage.
+         */
+        patch: operations["admin_update_user_api_v1_admin_users__user_id__patch"];
+        trace?: never;
+    };
     "/api/v1/properties/search": {
         parameters: {
             query?: never;
@@ -228,7 +387,9 @@ export interface paths {
          * Run Search
          * @description Start a property search as a background job. Poll the job for progress, then read its results.
          *
-         *     An identical recent search returns its existing job (served from cache) unless `refresh` is set.
+         *     Requires an account. Searches are by ZIP code and count against the user's plan (distinct ZIP codes
+         *     per period). An identical recent search returns its existing job (served from cache) unless
+         *     `refresh` is set — which only administrators may do.
          */
         post: operations["run_search_api_v1_searches_run_post"];
         delete?: never;
@@ -760,7 +921,7 @@ export interface paths {
         };
         /**
          * Usage
-         * @description API requests, errors and estimated cost per provider for the current month.
+         * @description API requests, errors and estimated cost per provider for the current month (administrators only).
          */
         get: operations["usage_api_v1_system_usage_get"];
         put?: never;
@@ -949,6 +1110,39 @@ export interface components {
              */
             is_demo: boolean;
         };
+        /** AccountOut */
+        AccountOut: {
+            /** Plan */
+            plan: string;
+            /** Plan Name */
+            plan_name: string;
+            /** Unlimited */
+            unlimited: boolean;
+            /** Period */
+            period: string;
+            /** Monthly */
+            monthly: boolean;
+            /** Zip Searches Used */
+            zip_searches_used: number;
+            /** Zip Searches Limit */
+            zip_searches_limit: number | null;
+            /** Property Reports Used */
+            property_reports_used: number;
+            /** Property Reports Limit */
+            property_reports_limit: number | null;
+            /** Zips Per Search */
+            zips_per_search: number;
+            /** Searched Zips */
+            searched_zips: string[];
+            /** Quotas Apply */
+            quotas_apply: boolean;
+            /** Plan Status */
+            plan_status: string | null;
+            /** Plan Renews At */
+            plan_renews_at: string | null;
+            /** Can Manage Billing */
+            can_manage_billing: boolean;
+        };
         /** Acquisition */
         Acquisition: {
             /** Purchase Price */
@@ -1023,6 +1217,78 @@ export interface components {
             reserve_months?: number;
             /** Initial Reserves */
             initial_reserves?: number | null;
+        };
+        /** AdminUserOut */
+        AdminUserOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name: string | null;
+            /** Role */
+            role: string;
+            /** Plan */
+            plan: string;
+            /** Plan Status */
+            plan_status: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Login At */
+            last_login_at: string | null;
+            /** Login Count */
+            login_count: number;
+            /** Zip Searches Used */
+            zip_searches_used: number;
+            /** Property Reports Used */
+            property_reports_used: number;
+            /** Searched Zips */
+            searched_zips: string[];
+            /** Saved Properties */
+            saved_properties: number;
+            /** Saved Searches */
+            saved_searches: number;
+            /** Billed Online */
+            billed_online: boolean;
+        };
+        /** AdminUserPatch */
+        AdminUserPatch: {
+            /** Plan */
+            plan?: ("free" | "pro" | "premium") | null;
+            /** Role */
+            role?: ("user" | "admin") | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /**
+             * Reset Usage
+             * @description Clear this period's usage (e.g. after a failed search)
+             * @default false
+             */
+            reset_usage: boolean;
+        };
+        /** AdminUsersOut */
+        AdminUsersOut: {
+            /** Users */
+            users: components["schemas"]["AdminUserOut"][];
+            /** Total */
+            total: number;
+            /** By Plan */
+            by_plan: {
+                [key: string]: number;
+            };
+            /** Monthly Revenue Usd */
+            monthly_revenue_usd: number;
         };
         /** AnalysisRequest */
         AnalysisRequest: {
@@ -1174,6 +1440,14 @@ export interface components {
             label: string;
             /** Amount */
             amount: number;
+        };
+        /** CheckoutRequest */
+        CheckoutRequest: {
+            /**
+             * Plan
+             * @enum {string}
+             */
+            plan: "pro" | "premium";
         };
         /** ComparableOut */
         ComparableOut: {
@@ -2150,6 +2424,51 @@ export interface components {
             /** Query */
             query: string;
         };
+        /** PlanOut */
+        PlanOut: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Price Usd */
+            price_usd: number;
+            /** Zip Searches */
+            zip_searches: number | null;
+            /** Property Reports */
+            property_reports: number | null;
+            /** Zips Per Search */
+            zips_per_search: number;
+            /** Monthly */
+            monthly: boolean;
+            /** Features */
+            features: string[];
+        };
+        /** PlanUpdate */
+        PlanUpdate: {
+            /** Price Usd */
+            price_usd: number | string;
+            /**
+             * Zip Searches
+             * @description Distinct ZIP codes per period; null = unlimited
+             */
+            zip_searches?: number | null;
+            /**
+             * Property Reports
+             * @description Paid property reports per period; null = unlimited
+             */
+            property_reports?: number | null;
+            /** Zips Per Search */
+            zips_per_search: number;
+        };
+        /** PlansOut */
+        PlansOut: {
+            /** Plans */
+            plans: components["schemas"]["PlanOut"][];
+            /** Billing Enabled */
+            billing_enabled: boolean;
+            /** Quotas Apply */
+            quotas_apply: boolean;
+        };
         /**
          * Preferences
          * @description Omitted fields are left unchanged on update.
@@ -2594,6 +2913,11 @@ export interface components {
              * @default
              */
             regulatory_risk_str: string;
+        };
+        /** RedirectOut */
+        RedirectOut: {
+            /** Url */
+            url: string;
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -3795,6 +4119,11 @@ export interface components {
             name: string | null;
             /** Role */
             role: string;
+            /**
+             * Plan
+             * @default free
+             */
+            plan: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -4037,6 +4366,221 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Preferences-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plans_api_v1_account_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlansOut"];
+                };
+            };
+        };
+    };
+    my_account_api_v1_account_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOut"];
+                };
+            };
+        };
+    };
+    start_checkout_api_v1_billing_checkout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedirectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    billing_portal_api_v1_billing_portal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedirectOut"];
+                };
+            };
+        };
+    };
+    admin_plans_api_v1_admin_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanOut"][];
+                };
+            };
+        };
+    };
+    admin_update_plan_api_v1_admin_plans__plan_key__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_key: "free" | "pro" | "premium";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_users_api_v1_admin_users_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUsersOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_update_user_api_v1_admin_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
                 };
             };
             /** @description Validation Error */

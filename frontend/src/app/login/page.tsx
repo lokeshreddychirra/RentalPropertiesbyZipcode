@@ -15,7 +15,7 @@ function LoginForm() {
   const params = useSearchParams();
   const { refresh, user } = useSession();
   const { data: status } = useStatus();
-  const [mode, setMode] = React.useState<"login" | "register">("login");
+  const [mode, setMode] = React.useState<"login" | "register">(params.get("mode") === "register" ? "register" : "login");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");
@@ -58,7 +58,9 @@ function LoginForm() {
           </span>
         </Link>
         <h1 className="text-lg font-semibold">{mode === "login" ? "Sign in" : "Create your account"}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">An account is optional — it lets you save searches, properties, assumptions and alerts.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {mode === "register" ? "Free accounts include one ZIP code search with full analysis of every listing." : "Sign in to search ZIP codes and save properties."}
+        </p>
 
         <form onSubmit={submit} className="mt-5 space-y-4">
           {mode === "register" ? (

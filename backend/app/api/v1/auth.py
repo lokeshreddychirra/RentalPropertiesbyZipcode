@@ -1,8 +1,13 @@
-"""Optional accounts: email + password, session in an httpOnly cookie (or Bearer token)."""
+"""Accounts: email + password, session in an httpOnly cookie (or Bearer token).
+
+Passwords are stored only as Argon2id hashes; they cannot be read back by anyone, including
+administrators. Sign-in times and counts are recorded for the administrator's user list.
+"""
 
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Response
@@ -34,6 +39,7 @@ class UserOut(BaseModel):
     email: EmailStr
     name: str | None
     role: str
+    plan: str = "free"
 
 
 class SessionOut(BaseModel):
@@ -55,7 +61,7 @@ class Preferences(BaseModel):
 
 
 def _user_out(user: User) -> UserOut:
-    return UserOut(id=user.id, email=user.email, name=user.name, role=user.role)
+    return UserOut(id=user.id, email=user.email, name=user.name, role=user.role, plan=user.plan or "free")
 
 
 def _set_cookie(response: Response, token: str) -> None:
@@ -82,7 +88,9 @@ async def register(body: RegisterRequest, session: Session, response: Response) 
     # The first account, and any address listed in ADMIN_EMAILS, administers budgets and the STR registry.
     is_first = (await session.execute(select(func.count()).select_from(User))).scalar_one() == 0
     role = "admin" if is_first or email in {e.lower() for e in settings.admin_emails} else "user"
-    user = User(email=email, password_hash=hash_password(body.password), name=body.name, role=role)
+    user = User(
+        email=email, password_hash=hash_password(body.password), name=body.name, role=role, plan="free", last_login_at=datetime.now(UTC), login_count=1
+    )
     session.add(user)
     await session.flush()
     token = create_access_token(str(user.id))
@@ -95,6 +103,8 @@ async def login(body: Credentials, session: Session, response: Response) -> Sess
     user = (await session.execute(select(User).where(User.email == body.email.lower()))).scalar_one_or_none()
     if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
         raise UnauthorizedError("Incorrect email or password")
+    user.last_login_at = datetime.now(UTC)
+    user.login_count = (user.login_count or 0) + 1
     token = create_access_token(str(user.id))
     _set_cookie(response, token)
     return SessionOut(user=_user_out(user), access_token=token)

@@ -5,8 +5,8 @@ import { MapPin, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card } from "@/components/ui/card";
 import { Field, Input, NumberInput, Select } from "@/components/ui/form";
-import { EMPTY_FORM, filtersToForm, formToFilters, hasLocation, parseLocation, type FilterForm } from "@/lib/filters";
-import { useStatus } from "@/lib/store";
+import { EMPTY_FORM, filtersToForm, formToFilters, parseZips, type FilterForm } from "@/lib/filters";
+import { useAccount, useStatus } from "@/lib/store";
 import type { SearchFilters, StrategyFilter } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +45,8 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { data: status } = useStatus();
+  const { data: account } = useAccount();
+  const maxZips = account?.zips_per_search ?? 1;
   const initialKey = JSON.stringify(initial ?? null);
 
   React.useEffect(() => {
@@ -64,28 +66,26 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
     form.minCapRate,
     form.minCashOnCash,
     form.minCashFlow,
-    form.county || null,
-    form.radius,
     form.propertyTypes.length || null,
-  ].filter((v) => v !== null && v !== undefined && v !== "").length;
+  ].filter((v) => v !== null && v !== undefined).length;
   const dirty = JSON.stringify(form) !== JSON.stringify(EMPTY_FORM);
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    const location = parseLocation(form.location);
-    if (location.error) {
-      setError(location.error);
+    const parsed = parseZips(form.location);
+    if (parsed.error) {
+      setError(parsed.error);
+      return;
+    }
+    if (!parsed.zip_codes.length) {
+      setError("Enter a 5-digit ZIP code — for example 38116.");
+      return;
+    }
+    if (parsed.zip_codes.length > maxZips) {
+      setError(maxZips === 1 ? "Your plan searches one ZIP code at a time. Premium searches several at once." : `Your plan searches up to ${maxZips} ZIP codes at a time.`);
       return;
     }
     const filters = formToFilters(form);
-    if (!hasLocation(filters)) {
-      setError("Enter a city and state (e.g. “Memphis, TN”), a ZIP code, or a state.");
-      return;
-    }
-    if (filters.county && !filters.state) {
-      setError("A county search needs a state in the location box — e.g. “TN” with county “Shelby”.");
-      return;
-    }
     if (form.minPrice !== null && form.maxPrice !== null && form.minPrice > form.maxPrice) {
       setError("Minimum price is higher than maximum price.");
       return;
@@ -98,12 +98,13 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
     <Card className="overflow-hidden">
       <form onSubmit={submit} aria-label="Property search">
         <div className="flex flex-col gap-3 p-4 sm:p-5 lg:flex-row lg:items-end">
-          <Field label="Location" htmlFor="f-location" className="min-w-0 flex-1">
+          <Field label={maxZips > 1 ? `ZIP codes (up to ${maxZips})` : "ZIP code"} htmlFor="f-location" className="min-w-0 flex-1">
             <div className="relative">
               <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
               <Input
                 id="f-location"
-                placeholder="City, ZIP code or state — e.g. Memphis, TN or 38116"
+                placeholder={maxZips > 1 ? "e.g. 38116, 38118" : "e.g. 38116"}
+                inputMode="numeric"
                 value={form.location}
                 onChange={(e) => set("location", e.target.value)}
                 autoComplete="off"
@@ -231,31 +232,15 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
                 <NumberInput id="f-net" suffix="%" placeholder="Any" value={form.minNetYield} onValueChange={(v) => set("minNetYield", v)} />
               </Field>
             </Group>
-            <Group title="Area">
-              <Field label="Radius" htmlFor="f-radius" hint="Around the city or ZIP">
-                <NumberInput id="f-radius" suffix="mi" placeholder="—" value={form.radius} onValueChange={(v) => set("radius", v)} min={0} max={100} />
-              </Field>
-              <Field label="County" htmlFor="f-county" hint="With a state as the location">
-                <Input id="f-county" placeholder="e.g. Shelby" value={form.county} onChange={(e) => set("county", e.target.value)} autoComplete="off" />
-              </Field>
-            </Group>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               Return filters are calculated with the financing assumptions (25% down at 7% by default) for each property’s recommended strategy.
             </p>
           </div>
         ) : null}
 
-        {error || form.polygon?.length ? (
-          <div className="space-y-2 border-t px-4 py-3 sm:px-5">
-            {error ? <Alert tone="error">{error}</Alert> : null}
-            {form.polygon?.length ? (
-              <Alert tone="info">
-                A drawn map area with {form.polygon.length} points is part of this search.{" "}
-                <button type="button" className="font-medium underline" onClick={() => set("polygon", null)}>
-                  Remove it
-                </button>
-              </Alert>
-            ) : null}
+        {error ? (
+          <div className="border-t px-4 py-3 sm:px-5">
+            <Alert tone="error">{error}</Alert>
           </div>
         ) : null}
       </form>

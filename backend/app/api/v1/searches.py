@@ -16,6 +16,7 @@ from app.core.errors import AppError, NotFoundError
 from app.models.tables import SavedSearch
 from app.schemas.analysis import AssumptionOverrides
 from app.schemas.search import MapResults, SearchFilters, SearchJob, SearchResults, SearchRunRequest, SortKey
+from app.services import plans
 from app.services import search as search_service
 from app.services.jobs import enqueue_search
 from app.services.nl_search import NLParseResult, parse_query
@@ -46,11 +47,16 @@ def parse_polygon(value: str | None) -> list[tuple[float, float]] | None:
 
 
 @router.post("/run", response_model=SearchJob, status_code=202, dependencies=[rate_limit("search", 40, 60)])
-async def run_search(body: SearchRunRequest) -> SearchJob:
+async def run_search(body: SearchRunRequest, user: CurrentUser, session: Session) -> SearchJob:
     """Start a property search as a background job. Poll the job for progress, then read its results.
 
-    An identical recent search returns its existing job (served from cache) unless `refresh` is set.
+    Requires an account. Searches are by ZIP code and count against the user's plan (distinct ZIP codes
+    per period). An identical recent search returns its existing job (served from cache) unless
+    `refresh` is set — which only administrators may do.
     """
+    await plans.authorize_search(session, user, body.filters)
+    if body.refresh and not plans.is_unlimited(user):
+        body = body.model_copy(update={"refresh": False})
     job, needs_run = await search_service.create_job(body)
     if needs_run:
         await enqueue_search(job.id)

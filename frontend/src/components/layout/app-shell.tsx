@@ -4,12 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Bell, Bookmark, Building2, GitCompareArrows, LayoutDashboard, LogOut, Map as MapIcon, Menu, Search, Settings, TrendingUp, User as UserIcon } from "lucide-react";
+import { BarChart3, Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Map as MapIcon, Menu, Search, Settings, TrendingUp, User as UserIcon, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/overlays";
 import { api } from "@/lib/api";
-import { useApp, useSession, useStatus } from "@/lib/store";
+import { useAccount, useApp, useSession, useStatus } from "@/lib/store";
 import { cn, relativeTime } from "@/lib/utils";
 
 type Access = "everyone" | "user" | "admin";
@@ -20,6 +20,8 @@ const NAV: { href: string; label: string; icon: typeof Search; access: Access }[
   { href: "/compare", label: "Property Comparison", icon: GitCompareArrows, access: "everyone" },
   { href: "/saved", label: "Saved Properties", icon: Bookmark, access: "user" },
   { href: "/market", label: "Market Analytics", icon: BarChart3, access: "everyone" },
+  { href: "/pricing", label: "Plans & Pricing", icon: CreditCard, access: "everyone" },
+  { href: "/admin/users", label: "Users & Plans", icon: Users, access: "admin" },
   { href: "/settings", label: "Settings", icon: Settings, access: "admin" },
 ];
 
@@ -128,6 +130,27 @@ function Notifications() {
   );
 }
 
+/** "Free · 0 of 1 ZIP searches" — links to the pricing page. Hidden for administrators and guests. */
+function PlanChip() {
+  const { data: account } = useAccount();
+  if (!account || account.unlimited || !account.quotas_apply) return null;
+  const limit = account.zip_searches_limit;
+  const left = limit == null ? null : Math.max(limit - account.zip_searches_used, 0);
+  return (
+    <Link
+      href="/pricing"
+      className={cn(
+        "hidden items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:border-foreground/30 sm:inline-flex",
+        left === 0 ? "border-negative/40 text-negative" : "text-muted-foreground",
+      )}
+    >
+      <span className="font-semibold text-foreground">{account.plan_name}</span>
+      <span aria-hidden>·</span>
+      {left == null ? "Unlimited ZIP searches" : `${left} ZIP search${left === 1 ? "" : "es"} left${account.monthly ? " this month" : ""}`}
+    </Link>
+  );
+}
+
 function UserMenu() {
   const { user, loading, refresh } = useSession();
   const router = useRouter();
@@ -135,9 +158,14 @@ function UserMenu() {
   if (loading) return <div className="size-9" />;
   if (!user) {
     return (
-      <Button asChild variant="outline" size="sm">
-        <Link href="/login">Sign in</Link>
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button asChild variant="ghost" size="sm">
+          <Link href="/login">Sign in</Link>
+        </Button>
+        <Button asChild size="sm">
+          <Link href="/login?mode=register">Create free account</Link>
+        </Button>
+      </div>
     );
   }
   return (
@@ -158,12 +186,24 @@ function UserMenu() {
             <Bookmark /> Saved properties
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/pricing">
+            <CreditCard /> Plan & billing
+          </Link>
+        </DropdownMenuItem>
         {user.role === "admin" ? (
-          <DropdownMenuItem asChild>
-            <Link href="/settings">
-              <Settings /> Settings
-            </Link>
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuItem asChild>
+              <Link href="/admin/users">
+                <Users /> Users & plans
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/settings">
+                <Settings /> Settings
+              </Link>
+            </DropdownMenuItem>
+          </>
         ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -250,7 +290,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Building2 className="size-4" aria-hidden />
             Residential investment analysis · United States
           </div>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-2">
+            <PlanChip />
             <Notifications />
             <UserMenu />
           </div>

@@ -5,6 +5,11 @@ import type { components } from "./api-types";
 type S = components["schemas"];
 
 export type SystemStatus = S["SystemStatus"];
+export type Account = S["AccountOut"];
+export type PlanInfo = S["PlanOut"];
+export type PlansInfo = S["PlansOut"];
+export type AdminUser = S["AdminUserOut"];
+export type AdminUsers = S["AdminUsersOut"];
 export type Meta = S["Meta"];
 export type SearchFilters = S["SearchFilters-Input"];
 export type SearchJob = S["SearchJob"];

@@ -52,6 +52,13 @@ class ConflictError(AppError):
     code = "conflict"
 
 
+class PlanLimitError(AppError):
+    """The user's plan does not allow this request (HTTP 402). ``details`` carries plan and usage."""
+
+    status_code = 402
+    code = "plan_limit"
+
+
 class RateLimitedError(AppError):
     status_code = 429
     code = "rate_limited"

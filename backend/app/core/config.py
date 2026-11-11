@@ -85,6 +85,26 @@ class Settings(BaseSettings):
     llm_monthly_request_budget: int = 2000
     llm_monthly_cost_budget_usd: Decimal = Decimal("50")
 
+    # --- Plans & billing -------------------------------------------------------
+    # Quotas apply in live data mode only (demo data costs nothing). Administrators are unlimited.
+    # "ZIP searches" count distinct ZIP codes per period; "property reports" count properties whose
+    # property-level estimates had to be bought from the data provider.
+    plan_free_zip_searches: int = 1  # lifetime
+    plan_free_property_reports: int = 3  # lifetime
+    plan_pro_price_usd: Decimal = Decimal("19")
+    plan_pro_zip_searches: int = 15  # per month
+    plan_pro_property_reports: int = 75
+    plan_premium_price_usd: Decimal = Decimal("49")
+    plan_premium_zip_searches: int = 50
+    plan_premium_property_reports: int = 250
+    plan_premium_zips_per_search: int = 5
+    # Online payments (Stripe Checkout + Billing Portal). Without these, an administrator assigns plans.
+    stripe_secret_key: SecretStr | None = None
+    stripe_webhook_secret: SecretStr | None = None
+    stripe_price_pro: str | None = None
+    stripe_price_premium: str | None = None
+    stripe_api_base: str = "https://api.stripe.com/v1"
+
     # --- Freshness thresholds (how long cached provider data is reused) -----
     listing_cache_ttl_seconds: int = 24 * 3600
     rent_estimate_ttl_days: int = 30
@@ -149,7 +169,7 @@ class Settings(BaseSettings):
             value = value.replace("?sslmode=", "?ssl=").replace("&sslmode=", "&ssl=")
         return value
 
-    @field_validator("rentcast_api_key", "airdna_api_key", "mapbox_access_token", "anthropic_api_key", mode="before")
+    @field_validator("rentcast_api_key", "airdna_api_key", "mapbox_access_token", "anthropic_api_key", "stripe_secret_key", "stripe_webhook_secret", "stripe_price_pro", "stripe_price_premium", mode="before")
     @classmethod
     def _blank_to_none(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():

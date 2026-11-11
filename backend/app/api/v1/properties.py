@@ -11,11 +11,11 @@ from fastapi import APIRouter, Query
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import OptionalUser, Session, rate_limit
+from app.api.deps import CurrentUser, OptionalUser, Session, rate_limit
 from app.api.v1.searches import parse_bbox, parse_polygon
 from app.core.config import get_settings
 from app.core.db import session_scope
-from app.core.errors import AppError, NotFoundError, UpstreamError
+from app.core.errors import AppError, NotFoundError, PlanLimitError, UpstreamError
 from app.models.tables import (
     FavoriteProperty,
     Property,
@@ -38,7 +38,7 @@ from app.schemas.property import (
     ValueEstimateOut,
 )
 from app.schemas.search import SearchFilters, SearchResults, SearchRunRequest, SortKey
-from app.services import property_store
+from app.services import plans, property_store
 from app.services import search as search_service
 
 router = APIRouter(prefix="/properties", tags=["properties"])
@@ -46,6 +46,8 @@ router = APIRouter(prefix="/properties", tags=["properties"])
 
 @router.get("/search", response_model=SearchResults, dependencies=[rate_limit("search", 40, 60)])
 async def search_properties(
+    user: CurrentUser,
+    session: Session,
     zip_codes: Annotated[list[str] | None, Query(description="One or more 5-digit ZIP codes")] = None,
     cities: Annotated[list[str] | None, Query(description='One or more cities as "City, ST"')] = None,
     state: str | None = None,
@@ -88,6 +90,7 @@ async def search_properties(
         fields = [{"field": ".".join(str(p) for p in e["loc"]), "message": e["msg"].removeprefix("Value error, ")} for e in errors]
         raise AppError("Invalid search filters", code="validation_error", status_code=422, details={"fields": fields}) from exc
 
+    await plans.authorize_search(session, user, filters)
     job, needs_run = await search_service.create_job(SearchRunRequest(filters=filters))
     if needs_run:
         await search_service.run_search_job(job.id)
@@ -181,6 +184,7 @@ def _provider_failure(exc: ProviderError) -> str:
 async def rent_estimate(
     property_id: uuid.UUID,
     session: Session,
+    user: OptionalUser,
     fetch: Annotated[bool, Query(description="Request a property-level estimate from the provider if none is cached (may be billable)")] = False,
     refresh: Annotated[bool, Query(description="Force a new provider request even if a fresh estimate is cached")] = False,
 ) -> RentEstimateOut:
@@ -200,12 +204,17 @@ async def rent_estimate(
             )
         ).scalars().first()
 
+    refresh = refresh and bool(user and plans.is_unlimited(user))  # forced re-purchase: administrators only
     row = None if refresh else await stored()
     fetched_now = False
     failure: str | None = None
+    record = None
     if row is None and (fetch or refresh) and providers.rent is not None:
         try:
+            await plans.authorize_property_report(session, user, str(property_id))
             record = await providers.rent.rent_estimate(property_store.subject_for(ctx))
+        except PlanLimitError as exc:
+            failure = exc.message
         except ProviderError as exc:
             record, failure = None, _provider_failure(exc)
         if record is not None:
@@ -236,7 +245,7 @@ async def rent_estimate(
 
 
 @router.get("/{property_id}/value-estimate", response_model=ValueEstimateOut)
-async def value_estimate(property_id: uuid.UUID, session: Session, fetch: bool = False, refresh: bool = False) -> ValueEstimateOut:
+async def value_estimate(property_id: uuid.UUID, session: Session, user: OptionalUser, fetch: bool = False, refresh: bool = False) -> ValueEstimateOut:
     """Automated value estimate with the comparable sale listings it is based on."""
     ctx = await _require_context(session, property_id)
     providers = get_providers()
@@ -249,11 +258,16 @@ async def value_estimate(property_id: uuid.UUID, session: Session, fetch: bool =
             )
         ).scalars().first()
 
+    refresh = refresh and bool(user and plans.is_unlimited(user))
     row = None if refresh else await stored()
     fetched_now, failure = False, None
+    record = None
     if row is None and (fetch or refresh) and providers.value is not None:
         try:
+            await plans.authorize_property_report(session, user, str(property_id))
             record = await providers.value.value_estimate(property_store.subject_for(ctx))
+        except PlanLimitError as exc:
+            failure = exc.message
         except ProviderError as exc:
             record, failure = None, _provider_failure(exc)
         if record is not None:
@@ -320,12 +334,16 @@ async def str_estimate(property_id: uuid.UUID, session: Session, fetch: bool = F
 
 
 @router.post("/{property_id}/tax-record", status_code=200)
-async def fetch_tax_record(property_id: uuid.UUID, session: Session) -> dict:
+async def fetch_tax_record(property_id: uuid.UUID, session: Session, user: OptionalUser) -> dict:
     """Look up the latest public property-tax record (one billable provider request)."""
     ctx = await _require_context(session, property_id)
     provider = get_providers().tax
     if provider is None:
         return {"available": False, "reason": "No tax record provider is configured in this data mode."}
+    try:
+        await plans.authorize_property_report(session, user, str(property_id))
+    except PlanLimitError as exc:
+        return {"available": False, "reason": exc.message}
     try:
         record = await provider.tax_record(property_store.subject_for(ctx))
     except ProviderError as exc:
