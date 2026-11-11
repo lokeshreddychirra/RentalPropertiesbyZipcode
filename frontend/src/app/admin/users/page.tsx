@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton, Table, Td, Th } from "@/components/ui/card";
 import { Field, Input, NumberInput, Select } from "@/components/ui/form";
 import { api, errorMessage } from "@/lib/api";
+import { DataSourcesCard, NotificationsCard, UsageCard } from "@/components/admin/site-settings";
 import { useSession, useStatus } from "@/lib/store";
 import type { AdminUser, AdminUsers, PlanInfo } from "@/lib/types";
 import { cn, relativeTime, shortDate } from "@/lib/utils";
@@ -48,15 +49,15 @@ function AdminStats({ users }: { users: AdminUsers | undefined }) {
         value={status ? (live ? "Live listings" : "Demo dataset") : "—"}
         tone={live ? "text-positive" : "text-[#5b21b6]"}
         sub={live ? "RentCast connected" : "Sample properties — not real listings"}
-        href="/settings#data-sources"
+        href="#data-sources"
       />
       <Stat
         icon={<Gauge />}
         label="RentCast requests this month"
         value={rentcast ? `${rentcast.requests_this_month.toLocaleString()}${rentcast.monthly_request_limit ? ` of ${rentcast.monthly_request_limit}` : ""}` : "—"}
         tone={rentcast?.monthly_request_limit && rentcast.requests_this_month >= rentcast.monthly_request_limit ? "text-negative" : undefined}
-        sub={rentcast ? `Est. $${rentcast.estimated_cost_this_month_usd.toFixed(2)} · change the limit in Settings` : "Loading…"}
-        href="/settings#usage"
+        sub={rentcast ? `Est. $${rentcast.estimated_cost_this_month_usd.toFixed(2)} · change the limit below` : "Loading…"}
+        href="#usage"
       />
       <Stat
         icon={<Users />}
@@ -327,7 +328,7 @@ export default function AdminUsersPage() {
     <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 lg:px-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Admin portal</h1>
-        <p className="text-sm text-muted-foreground">Site usage, plan allowances and every user account.</p>
+        <p className="text-sm text-muted-foreground">Site usage, users, plans, data sources and API budgets.</p>
       </div>
 
       <AdminStats users={data} />
@@ -419,6 +420,10 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      <UsageCard />
+      <DataSourcesCard />
+      <NotificationsCard />
     </div>
   );
 }

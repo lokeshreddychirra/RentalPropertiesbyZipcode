@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Map as MapIcon, Menu, Search, Settings, TrendingUp, User as UserIcon, Users } from "lucide-react";
+import { BarChart3, Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Map as MapIcon, Menu, Search, TrendingUp, User as UserIcon, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/overlays";
@@ -22,7 +22,6 @@ const NAV: { href: string; label: string; icon: typeof Search; access: Access }[
   { href: "/market", label: "Market Analytics", icon: BarChart3, access: "everyone" },
   { href: "/pricing", label: "Plans & Pricing", icon: CreditCard, access: "everyone" },
   { href: "/admin/users", label: "Admin Portal", icon: Users, access: "admin" },
-  { href: "/settings", label: "Settings", icon: Settings, access: "admin" },
 ];
 
 function useAccess(): (access: Access) => boolean {
@@ -183,11 +182,6 @@ function UserMenu() {
                 <Users /> Admin portal
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/settings">
-                <Settings /> Settings
-              </Link>
-            </DropdownMenuItem>
           </>
         ) : null}
         <DropdownMenuSeparator />
@@ -217,7 +211,7 @@ export function DemoBanner() {
       </Badge>
       <span>Every property, rent and short-term rental figure shown is synthetic sample data — not a real listing.</span>
       {user?.role === "admin" ? (
-        <Link href="/settings#data-sources" className="font-medium underline underline-offset-2">
+        <Link href="/admin/users#data-sources" className="font-medium underline underline-offset-2">
           Connect live data
         </Link>
       ) : null}
