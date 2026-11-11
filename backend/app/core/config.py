@@ -53,9 +53,9 @@ class Settings(BaseSettings):
     # Enable only if your RentCast API version supports ``min:max`` range syntax
     # on numeric query parameters. When false, ranges are filtered locally.
     rentcast_range_filters: bool = False
-    rentcast_cost_per_request_usd: Decimal = Decimal("0.02")
-    rentcast_monthly_request_budget: int = 1000
-    rentcast_monthly_cost_budget_usd: Decimal = Decimal("50")
+    rentcast_cost_per_request_usd: Decimal = Decimal("0.20")
+    rentcast_monthly_request_budget: int = 50
+    rentcast_monthly_cost_budget_usd: Decimal = Decimal("25")
 
     # --- AirDNA (short-term rental analytics) -------------------------------
     airdna_api_key: SecretStr | None = None
@@ -86,20 +86,26 @@ class Settings(BaseSettings):
     llm_monthly_cost_budget_usd: Decimal = Decimal("50")
 
     # --- Freshness thresholds (how long cached provider data is reused) -----
-    listing_cache_ttl_seconds: int = 6 * 3600
+    listing_cache_ttl_seconds: int = 24 * 3600
     rent_estimate_ttl_days: int = 30
     value_estimate_ttl_days: int = 30
     str_estimate_ttl_days: int = 30
-    market_stats_ttl_days: int = 7
+    market_stats_ttl_days: int = 30
     search_result_ttl_seconds: int = 3600
 
     # --- Search pipeline / cost control --------------------------------------
     # Safety cap on listings pulled for one search. Hitting it is always
     # disclosed to the user as a partial result — never silently truncated.
     max_listings_per_search: int = 10000
-    # Property-level (paid) estimates are only requested for the most promising
-    # candidates after cheap ZIP-level screening.
-    rent_avm_top_n: int = 15
+    # Area rents come from the searched area's active rental listings: at most this many pages
+    # (500 listings each) per searched location.
+    area_rent_max_pages: int = 6
+    # ZIP codes whose rental-listing sample is too thin fall back to the provider's market
+    # statistics endpoint (one paid request per ZIP), for at most this many ZIPs per search.
+    market_stats_fallback_max: int = 3
+    # Property-level (paid) rent estimates requested automatically for the top N candidates of
+    # each search. 0 = only when a property's analysis page is opened (cheapest).
+    rent_avm_top_n: int = 0
     # After the top candidates are upgraded the ranking is re-checked; if unverified properties
     # have moved into the top N they are upgraded too, for at most this many rounds
     # (so at most rent_avm_top_n × rent_avm_max_rounds paid rent estimates per search).

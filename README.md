@@ -12,9 +12,7 @@ are ranked by calculated returns — not by price or estimated rent.
 
 * **Search** by ZIP, city, county, state, radius or a drawn map area, with price, bedroom,
   property-type, HOA and days-on-market filters plus return thresholds (gross/net yield, cap
-  rate, cash-on-cash, cash flow). Natural-language search converts requests like *"houses under
-  $300k near Atlanta with $500/month cash flow"* into validated filters and tells you which
-  criteria it could not apply.
+  rate, cash-on-cash, cash flow).
 * **Rank** every match with a deterministic financial engine and a configurable 0–100
   investment score; sort by ten return metrics. List, map, map + list and comparison-table views.
 * **Analyse** a property in depth: editable assumptions with instant recalculation,
@@ -114,7 +112,7 @@ Errors have the shape `{"error": {"code", "message", "details"}}`.
 ## Development
 
 ```bash
-cd backend && pytest                                              # 79 tests
+cd backend && pytest                                              # 81 tests
 cd frontend && npm run typecheck && npm run lint && npm run build
 ```
 

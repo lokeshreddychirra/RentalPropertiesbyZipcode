@@ -315,6 +315,7 @@ async def test_auth_favorites_saved_searches_and_admin(client):
     other = await client.post(f"{API}/auth/register", json={"email": "user@example.com", "password": "another-long-password"})
     assert other.json()["user"]["role"] == "user"
     assert (await client.put(f"{API}/system/budgets/rentcast", json={"monthly_request_limit": 9})).status_code == 403
+    assert (await client.get(f"{API}/system/usage")).status_code == 403  # usage and spend are admin-only
     assert (await client.get(f"{API}/favorites")).json() == []  # users only see their own data
     assert (await client.delete(f"{API}/searches/saved/{saved.json()['id']}")).status_code == 404
     bad_login = await client.post(f"{API}/auth/login", json={"email": "user@example.com", "password": "wrong-password-here"})

@@ -2007,6 +2007,11 @@ export interface components {
              * @default false
              */
             is_demo: boolean;
+            /**
+             * Source
+             * @default market_api
+             */
+            source: string;
         };
         /** MarketSummary */
         MarketSummary: {

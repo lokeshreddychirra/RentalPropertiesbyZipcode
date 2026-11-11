@@ -43,7 +43,7 @@ export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttrib
     >
       {children}
     </select>
-    <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 size-4 text-muted-foreground" aria-hidden />
+    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
   </div>
 ));
 Select.displayName = "Select";

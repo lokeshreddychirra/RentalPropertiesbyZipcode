@@ -3,10 +3,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, CircleDashed, RotateCcw, Trash2 } from "lucide-react";
+import { CheckCircle2, CircleDashed, Lock, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Skeleton, Table, Td, Th } from "@/components/ui/card";
+import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton, Table, Td, Th } from "@/components/ui/card";
 import { Field, Input, Label, NumberInput, Select, Switch, Textarea } from "@/components/ui/form";
 import { api, errorMessage } from "@/lib/api";
 import { useApp, useSession, useStatus } from "@/lib/store";
@@ -472,6 +472,27 @@ function NotificationsCard() {
 }
 
 export default function SettingsPage() {
+  const { user, loading } = useSession();
+  if (loading) return null;
+  if (user?.role !== "admin") {
+    return (
+      <div className="mx-auto max-w-[1440px] px-4 py-10 lg:px-6">
+        <EmptyState
+          icon={<Lock />}
+          title="Settings are for administrators"
+          action={
+            user ? undefined : (
+              <Button asChild>
+                <Link href="/login?next=/settings">Sign in as administrator</Link>
+              </Button>
+            )
+          }
+        >
+          Data sources, API usage, budgets and scoring defaults are managed by the site administrator.
+        </EmptyState>
+      </div>
+    );
+  }
   return (
     <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 lg:px-6">
       <div>

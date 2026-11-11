@@ -152,8 +152,8 @@ class UsageReport(BaseModel):
 
 
 @router.get("/usage", response_model=UsageReport)
-async def usage(session: Session) -> UsageReport:
-    """API requests, errors and estimated cost per provider for the current month."""
+async def usage(_: AdminUser, session: Session) -> UsageReport:
+    """API requests, errors and estimated cost per provider for the current month (administrators only)."""
     tracker = get_usage_tracker()
     rows = (await session.execute(select(Provider).order_by(Provider.key))).scalars().all()
     providers = []

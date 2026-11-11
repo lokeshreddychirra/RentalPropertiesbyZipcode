@@ -69,15 +69,16 @@ production; nothing is ever stored in the browser or the repository.
 * Review RentCast's terms for your plan regarding caching, redistribution and attribution.
   The app displays "Listing and rent data provided by RentCast" on property pages.
 
-**Requests per search.** One search uses roughly: 1 request per 500 listings per location,
-1 market-statistics request per ZIP code found (cached for `MARKET_STATS_TTL_DAYS`), and up to
-`RENT_AVM_TOP_N` × `RENT_AVM_MAX_ROUNDS` (default 2) rent-estimate requests — fewer when the
-top-ranked properties already have fresh estimates. Vacant land listings are excluded unless
-the Land property type is requested. Opening a property's analysis page requests its rent
-estimate if it has none. On a small plan, lower `RENT_AVM_TOP_N` and set the monthly request
-limit under Settings → API usage & budgets to your plan's quota (the first account registered
-is the administrator). Budget environment variables only seed the initial values; after first
-start they are managed in Settings.
+**Requests per search.** A new area costs roughly 1 request per 500 sale listings plus 1 per
+500 active rental listings (area rents are aggregated per ZIP from the rental listings, at most
+`AREA_RENT_MAX_PAGES` pages), plus at most `MARKET_STATS_FALLBACK_MAX` (default 3) market-statistics
+requests for ZIPs with too few rentals. A typical ZIP search costs 2 requests. Price, bedroom and
+property-type filters are applied locally, so changing them re-uses the cached area (24 h) and costs
+nothing; stored area rents are reused for `MARKET_STATS_TTL_DAYS` (30). No property-level rent
+estimates are requested automatically (`RENT_AVM_TOP_N=0`); opening a property's analysis page
+requests one (cached for 30 days). The default monthly limit is 50 requests at $0.20 each (the
+Developer plan's included quota and overage price) — change it under Settings → API usage &
+budgets. Searches stop with a clear message when the limit is reached.
 
 **Inactive subscription.** RentCast answers `403 billing/subscription-inactive` until an API
 plan is activated at <https://app.rentcast.io/app/api>. The app reports that message on the

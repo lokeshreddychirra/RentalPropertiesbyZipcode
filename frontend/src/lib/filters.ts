@@ -2,9 +2,8 @@ import type { SearchFilters, SortKey, StrategyFilter } from "./types";
 
 /** Editable form state for the search panel (text fields stay free-form while typing). */
 export interface FilterForm {
-  zips: string;
-  cities: string;
-  state: string;
+  /** One free-text location: "Memphis, TN", "38116, 38118", "TN", or several separated by ";". */
+  location: string;
   county: string;
   radius: number | null;
   minPrice: number | null;
@@ -24,9 +23,7 @@ export interface FilterForm {
 }
 
 export const EMPTY_FORM: FilterForm = {
-  zips: "",
-  cities: "",
-  state: "",
+  location: "",
   county: "",
   radius: null,
   minPrice: null,
@@ -66,14 +63,61 @@ export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "newest", label: "Newest listings" },
 ];
 
+export interface ParsedLocation {
+  zip_codes: string[];
+  cities: string[];
+  state: string | null;
+  error: string | null;
+}
+
+/**
+ * Parse the single location box. Accepts ZIP codes ("38116" or "38116, 38118"), a state
+ * ("TN"), and cities with their state ("Memphis, TN" or "Memphis TN"); several entries can be
+ * separated with ";".
+ */
+export function parseLocation(text: string): ParsedLocation {
+  const out: ParsedLocation = { zip_codes: [], cities: [], state: null, error: null };
+  for (const raw of text.split(/[;\n]+/)) {
+    const part = raw.trim().replace(/\s+/g, " ");
+    if (!part) continue;
+    const tokens = part.split(/[\s,]+/).filter(Boolean);
+    if (tokens.every((t) => /^\d+$/.test(t))) {
+      const bad = tokens.find((t) => !/^\d{5}$/.test(t));
+      if (bad) return { ...out, error: `“${bad}” is not a 5-digit ZIP code.` };
+      for (const zip of tokens) if (!out.zip_codes.includes(zip)) out.zip_codes.push(zip);
+      continue;
+    }
+    if (/^[A-Za-z]{2}$/.test(part) && US_STATES.includes(part.toUpperCase())) {
+      out.state = part.toUpperCase();
+      continue;
+    }
+    const match = part.match(/^([A-Za-z .'\-]+?)[,\s]+([A-Za-z]{2})$/);
+    if (match && US_STATES.includes(match[2].toUpperCase())) {
+      const city = match[1].trim().replace(/\b\w/g, (c) => c.toUpperCase());
+      const label = `${city}, ${match[2].toUpperCase()}`;
+      if (!out.cities.includes(label)) out.cities.push(label);
+      continue;
+    }
+    return { ...out, error: `Add the state to “${part}” — for example “${part}, GA” — or enter a ZIP code.` };
+  }
+  return out;
+}
+
+export function formatLocation(filters: Partial<SearchFilters> | null | undefined): string {
+  if (!filters) return "";
+  const parts: string[] = [];
+  if (filters.cities?.length) parts.push(...filters.cities);
+  if (filters.zip_codes?.length) parts.push(filters.zip_codes.join(", "));
+  if (filters.state && !filters.cities?.length) parts.push(filters.state);
+  return parts.join("; ");
+}
+
 export function formToFilters(form: FilterForm): SearchFilters {
   const filters: SearchFilters = { strategy: form.strategy };
-  const zips = form.zips.split(/[\s,;]+/).map((z) => z.trim()).filter(Boolean);
-  if (zips.length) filters.zip_codes = zips;
-  // Cities are separated by semicolons or new lines so "Atlanta, GA" keeps its comma.
-  const cities = form.cities.split(/[;\n]+/).map((c) => c.trim().replace(/\s+/g, " ")).filter(Boolean);
-  if (cities.length) filters.cities = cities;
-  if (form.state) filters.state = form.state;
+  const location = parseLocation(form.location);
+  if (location.zip_codes.length) filters.zip_codes = location.zip_codes;
+  if (location.cities.length) filters.cities = location.cities;
+  if (location.state) filters.state = location.state;
   if (form.county.trim()) filters.county = form.county.trim();
   if (form.radius) filters.radius_miles = form.radius;
   if (form.polygon?.length) filters.polygon = form.polygon;
@@ -102,9 +146,7 @@ const n = (value: unknown): number | null => (value === null || value === undefi
 export function filtersToForm(filters: Partial<SearchFilters> | null | undefined): FilterForm {
   if (!filters) return { ...EMPTY_FORM };
   return {
-    zips: (filters.zip_codes ?? []).join(", "),
-    cities: (filters.cities ?? []).join("; "),
-    state: filters.state ?? "",
+    location: formatLocation(filters),
     county: filters.county ?? "",
     radius: n(filters.radius_miles),
     minPrice: n(filters.min_price),

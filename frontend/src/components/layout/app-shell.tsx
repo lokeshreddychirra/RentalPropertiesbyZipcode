@@ -12,15 +12,21 @@ import { api } from "@/lib/api";
 import { useApp, useSession, useStatus } from "@/lib/store";
 import { cn, relativeTime } from "@/lib/utils";
 
-const NAV = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/search", label: "Search Properties", icon: Search },
-  { href: "/map", label: "Investment Map", icon: MapIcon },
-  { href: "/compare", label: "Property Comparison", icon: GitCompareArrows },
-  { href: "/saved", label: "Saved Properties", icon: Bookmark },
-  { href: "/market", label: "Market Analytics", icon: BarChart3 },
-  { href: "/settings", label: "Settings", icon: Settings },
+type Access = "everyone" | "user" | "admin";
+const NAV: { href: string; label: string; icon: typeof Search; access: Access }[] = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, access: "everyone" },
+  { href: "/search", label: "Search Properties", icon: Search, access: "everyone" },
+  { href: "/map", label: "Investment Map", icon: MapIcon, access: "everyone" },
+  { href: "/compare", label: "Property Comparison", icon: GitCompareArrows, access: "everyone" },
+  { href: "/saved", label: "Saved Properties", icon: Bookmark, access: "user" },
+  { href: "/market", label: "Market Analytics", icon: BarChart3, access: "everyone" },
+  { href: "/settings", label: "Settings", icon: Settings, access: "admin" },
 ];
+
+function useAccess(): (access: Access) => boolean {
+  const { user } = useSession();
+  return (access) => access === "everyone" || (access === "user" && !!user) || (access === "admin" && user?.role === "admin");
+}
 
 function Brand() {
   return (
@@ -38,9 +44,10 @@ function Brand() {
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { compare } = useApp();
+  const allowed = useAccess();
   return (
     <nav aria-label="Main" className="flex flex-col gap-0.5">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {NAV.filter((item) => allowed(item.access)).map(({ href, label, icon: Icon }) => {
         const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
         return (
           <Link
@@ -65,7 +72,8 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 
 function DataModeNote() {
   const { data } = useStatus();
-  if (!data) return null;
+  const { user } = useSession();
+  if (!data || user?.role !== "admin") return null;
   return (
     <div className="rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
       <div className="mb-1 flex items-center gap-2">
@@ -150,11 +158,13 @@ function UserMenu() {
             <Bookmark /> Saved properties
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/settings">
-            <Settings /> Settings
-          </Link>
-        </DropdownMenuItem>
+        {user.role === "admin" ? (
+          <DropdownMenuItem asChild>
+            <Link href="/settings">
+              <Settings /> Settings
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={async () => {
@@ -173,6 +183,7 @@ function UserMenu() {
 
 export function DemoBanner() {
   const { data } = useStatus();
+  const { user } = useSession();
   if (!data || data.data_mode !== "demo") return null;
   return (
     <div role="status" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 border-b border-[#d6ccfb] bg-[#f5f3ff] px-4 py-1.5 text-center text-xs text-[#4c1d95]">
@@ -180,9 +191,11 @@ export function DemoBanner() {
         Demo data
       </Badge>
       <span>Every property, rent and short-term rental figure shown is synthetic sample data — not a real listing.</span>
-      <Link href="/settings#data-sources" className="font-medium underline underline-offset-2">
-        Connect live data
-      </Link>
+      {user?.role === "admin" ? (
+        <Link href="/settings#data-sources" className="font-medium underline underline-offset-2">
+          Connect live data
+        </Link>
+      ) : null}
     </div>
   );
 }

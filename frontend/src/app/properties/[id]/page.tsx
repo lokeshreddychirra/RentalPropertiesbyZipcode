@@ -307,9 +307,11 @@ export default function PropertyPage() {
               {assumptionsPanel}
             </DialogContent>
           </Dialog>
-          <Button variant={saved ? "secondary" : "outline"} aria-pressed={saved} onClick={() => favorites.toggle(id)}>
-            {saved ? <BookmarkCheck className="text-positive" /> : <Bookmark />} {saved ? "Saved" : "Save property"}
-          </Button>
+          {user ? (
+            <Button variant={saved ? "secondary" : "outline"} aria-pressed={saved} onClick={() => favorites.toggle(id)}>
+              {saved ? <BookmarkCheck className="text-positive" /> : <Bookmark />} {saved ? "Saved" : "Save property"}
+            </Button>
+          ) : null}
           <Button variant={compared ? "secondary" : "outline"} aria-pressed={compared} onClick={() => toggleCompare({ id, formatted_address: ctx.formatted_address, price: ctx.price ?? null })}>
             <GitCompareArrows /> {compared ? "Comparing" : "Compare"}
           </Button>

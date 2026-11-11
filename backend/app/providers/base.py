@@ -248,6 +248,15 @@ class MarketStats(BaseModel):
     history: list[MarketHistoryPoint] = Field(default_factory=list)
     fetched_at: datetime
     is_demo: bool = False
+    # "market_api": the provider's market-statistics endpoint; "rental_listings": aggregated locally
+    # from the area's active rental listings.
+    source: str = "market_api"
+
+    def has_reliable_rent(self) -> bool:
+        """True when ``screening_rent`` can produce an estimate for at least some homes."""
+        return self.rental_listings >= MIN_ZIP_SAMPLE or any(
+            (stat.median or stat.average) and stat.count >= MIN_BEDROOM_SAMPLE for stat in self.rent_by_bedrooms
+        )
 
     def screening_rent(self, bedrooms: Decimal | None, square_feet: int | None) -> tuple[Decimal, Decimal | None, Decimal | None, int] | None:
         """Conservative ZIP-level rent for first-pass screening: (rent, low, high, sample) or None.

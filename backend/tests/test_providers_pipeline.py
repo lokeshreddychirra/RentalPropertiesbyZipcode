@@ -250,3 +250,67 @@ def test_zip_level_screening_rent_is_conservative_and_needs_enough_listings():
     assert stats.screening_rent(None, None) is None
     thin = stats.model_copy(update={"rental_listings": 12})
     assert thin.screening_rent(D("6"), 3900) is None  # too few listings for either statistic
+
+
+async def test_area_rents_come_from_rental_listings_and_filters_reuse_the_cache(app, monkeypatch):
+    """One rental-listings request replaces per-ZIP market calls; filter changes cost nothing."""
+    import random
+
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "rent_avm_top_n", 0)
+    monkeypatch.setattr(get_settings(), "market_stats_fallback_max", 1)
+    base = random.randint(90000, 98000)
+    z_main, z_thin_a, z_thin_b = str(base), str(base + 1), str(base + 2)
+    calls: dict[str, int] = {}
+
+    def home(n: int, zip_code: str, **over) -> dict:
+        return rentcast_listing(n, id=f"{n}-{zip_code}", formattedAddress=f"{n} Main St, Dalton, GA {zip_code}", zipCode=zip_code, **over)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.removeprefix("/v1")
+        calls[path] = calls.get(path, 0) + 1
+        if path == "/listings/sale":
+            homes = [home(i, z_main) for i in range(6)] + [home(100 + i, z_thin_a) for i in range(2)] + [home(200 + i, z_thin_b) for i in range(3)]
+            return httpx.Response(200, json=homes)
+        if path == "/listings/rental/long-term":
+            rentals = [home(500 + i, z_main, price=1700 + 20 * i, bedrooms=3) for i in range(8)]
+            return httpx.Response(200, json=rentals)
+        if path == "/markets":
+            return httpx.Response(200, json={"rentalData": {"medianRent": 1500, "totalListings": 40, "medianRentPerSquareFoot": 1.0, "dataByBedrooms": [{"bedrooms": 3, "medianRent": 1500, "totalListings": 12}]}})
+        return httpx.Response(404, json={})
+
+    provider = make_rentcast(handler)
+    providers = ProviderSet(mode="live", listing_providers=[provider], market=provider, rent=provider)
+
+    async def progress(_: JobProgress) -> None:
+        return None
+
+    outcome = await execute_search(SearchRunRequest(filters=SearchFilters(cities=["Dalton, GA"])), progress, providers)
+    assert calls == {"/listings/sale": 1, "/listings/rental/long-term": 1, "/markets": 1}  # no per-ZIP calls, no AVMs
+    by_zip: dict[str, list] = {}
+    for card in outcome.cards:
+        by_zip.setdefault(card.zip_code, []).append(card)
+    assert all(c.rent_source == "market_zip" and c.long_term.monthly_income == 1770 for c in by_zip[z_main])  # median of 8 rentals
+    assert all(c.long_term.monthly_income == 1500 for c in by_zip[z_thin_b])  # biggest thin ZIP got the one fallback call
+    assert all(not c.long_term.available for c in by_zip[z_thin_a])
+    assert any("too few rental listings" in w and z_thin_a in w for w in outcome.warnings)
+
+    # Changing locally applied filters reuses cached pages and stored rents: zero new requests.
+    before = dict(calls)
+    await execute_search(SearchRunRequest(filters=SearchFilters(cities=["Dalton, GA"], max_price=200300, min_beds=3, property_types=["single_family"])), progress, providers)
+    assert calls == before
+    await provider.aclose()
+
+
+def test_rental_listing_aggregation():
+    from app.services.search import stats_from_rentals
+
+    now = datetime.now(UTC)
+    rows = [parse_listing(rentcast_listing(i, price=1000 + 100 * i, bedrooms=2 + i % 2, squareFootage=1000)) for i in range(6)]
+    rows.append(parse_listing(rentcast_listing(0, price=99)))  # same address, implausible rent: ignored
+    stats = stats_from_rentals([r for r in rows if r], "rentcast", now)["30720"]
+    assert stats.source == "rental_listings" and stats.rental_listings == 6
+    assert stats.median_rent == D("1250.00")
+    assert {b.bedrooms: b.count for b in stats.rent_by_bedrooms} == {2: 3, 3: 3}
+    assert not stats.has_reliable_rent()  # 6 listings: below both sample thresholds

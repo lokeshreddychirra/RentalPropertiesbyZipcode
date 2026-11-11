@@ -267,21 +267,12 @@ class RentCastProvider:
     # ------------------------------------------------------------------ listings
 
     def _listing_params(self, query: ListingQuery) -> dict[str, Any]:
-        params: dict[str, Any] = {"status": "Active"}
-        if query.latitude is not None and query.longitude is not None and query.radius_miles:
-            params.update(latitude=query.latitude, longitude=query.longitude, radius=query.radius_miles)
-        elif query.zip_code:
-            params["zipCode"] = query.zip_code
-        elif query.city:
-            params["city"] = query.city
-            params["state"] = query.state
-        elif query.state:
-            params["state"] = query.state
-        if len(query.property_types) == 1 and query.property_types[0] in _TYPE_TO_RENTCAST:
-            params["propertyType"] = _TYPE_TO_RENTCAST[query.property_types[0]]
-        if query.min_beds is not None and query.min_beds == query.max_beds:
-            params["bedrooms"] = query.min_beds
+        params: dict[str, Any] = {"status": "Active", **self._location_params(query)}
+        # Property type and bedroom filters are applied locally (not sent to the API) so that one
+        # cached fetch of an area serves every filter combination without new paid requests.
         if self._settings.rentcast_range_filters:
+            if len(query.property_types) == 1 and query.property_types[0] in _TYPE_TO_RENTCAST:
+                params["propertyType"] = _TYPE_TO_RENTCAST[query.property_types[0]]
             if query.min_price is not None or query.max_price is not None:
                 params["price"] = f"{query.min_price or ''}:{query.max_price or ''}"
             if query.min_beds != query.max_beds and (query.min_beds is not None or query.max_beds is not None):
@@ -289,6 +280,29 @@ class RentCastProvider:
             if query.max_days_on_market is not None:
                 params["daysOld"] = f":{query.max_days_on_market}"
         return params
+
+    def request_params(self, query: ListingQuery) -> dict[str, Any]:
+        """The parameters actually sent for ``query`` (used as the cache key)."""
+        return self._listing_params(query)
+
+    async def search_rental_listings(self, query: ListingQuery, *, offset: int, limit: int) -> ListingPage:
+        """Active long-term rental listings for an area (``price`` is the monthly rent)."""
+        limit = max(1, min(limit, self.page_size))
+        params = {**self._location_params(query), "status": "Active", "limit": limit, "offset": offset}
+        data = await self._http.get_json("/listings/rental/long-term", params=params, endpoint="listings/rental/long-term")
+        rows = data if isinstance(data, list) else []
+        listings = [record for record in (parse_listing(row) for row in rows if isinstance(row, dict)) if record]
+        return ListingPage(listings=listings, has_more=len(rows) >= limit, next_offset=offset + len(rows))
+
+    @staticmethod
+    def _location_params(query: ListingQuery) -> dict[str, Any]:
+        if query.latitude is not None and query.longitude is not None and query.radius_miles:
+            return {"latitude": query.latitude, "longitude": query.longitude, "radius": query.radius_miles}
+        if query.zip_code:
+            return {"zipCode": query.zip_code}
+        if query.city:
+            return {"city": query.city, "state": query.state}
+        return {"state": query.state} if query.state else {}
 
     async def search_listings(self, query: ListingQuery, *, offset: int, limit: int) -> ListingPage:
         limit = max(1, min(limit, self.page_size))

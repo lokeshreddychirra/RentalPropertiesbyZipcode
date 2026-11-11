@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { BookmarkPlus, ChevronLeft, ChevronRight, Columns2, GitCompareArrows, LayoutGrid, Map as MapIcon, RefreshCw, SearchX, Table2, X } from "lucide-react";
+import { BookmarkPlus, ChevronLeft, ChevronRight, Columns2, GitCompareArrows, Info, LayoutGrid, Map as MapIcon, RefreshCw, SearchX, Table2, X } from "lucide-react";
 import { toast } from "sonner";
 import { MapView } from "@/components/map/map-view";
 import { ConfidenceBadge, DemoTag, ScoreRing } from "@/components/property/bits";
@@ -18,7 +18,7 @@ import { MAX_COMPARE, useApp, useSession } from "@/lib/store";
 import type { PropertyCard as CardData, SearchFilters, SearchJob, SortKey, StrategyFilter } from "@/lib/types";
 import { cn, pct, ratio, signTone, usd } from "@/lib/utils";
 import { PropertyCard, viewOf } from "./property-card";
-import { SearchPanel, SmartSearch } from "./search-panel";
+import { SearchPanel } from "./search-panel";
 
 type View = "list" | "map" | "split" | "table";
 const VIEWS: { value: View; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -81,11 +81,16 @@ function JobNotices({ job }: { job: SearchJob }) {
           </ul>
         </Alert>
       ) : null}
-      {job.warnings.map((warning) => (
-        <Alert key={warning} tone="info">
-          {warning}
-        </Alert>
-      ))}
+      {job.warnings.length ? (
+        <ul className="space-y-1 text-xs text-muted-foreground">
+          {job.warnings.map((warning) => (
+            <li key={warning} className="flex items-start gap-1.5">
+              <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span>{warning}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -171,19 +176,11 @@ function SaveSearchDialog({ filters }: { filters: SearchFilters }) {
     if (open) setName(describeFilters(filters).slice(0, 110));
   }, [open, filters]);
 
-  if (!user) {
-    return (
-      <Button asChild variant="outline">
-        <Link href={`/login?next=${encodeURIComponent("/search")}`}>
-          <BookmarkPlus /> Save search
-        </Link>
-      </Button>
-    );
-  }
+  if (!user) return null;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline">
+        <Button variant="outline" className="h-9">
           <BookmarkPlus /> Save search
         </Button>
       </DialogTrigger>
@@ -283,16 +280,17 @@ interface Props {
   basePath: string;
   defaultView?: View;
   heading?: React.ReactNode;
-  advancedOpen?: boolean;
   /** Rendered above results when no search has been run yet. */
   idle?: React.ReactNode;
 }
 
-export function SearchExperience({ basePath, defaultView = "list", heading, advancedOpen = false, idle }: Props) {
+export function SearchExperience({ basePath, defaultView = "list", heading, idle }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const { defaultsOrNull, weights, hydrated } = useApp();
+  const { user } = useSession();
+  const isAdmin = user?.role === "admin";
 
   const rawFilters = params.get("f");
   const filters = React.useMemo(() => decodeFilters(rawFilters), [rawFilters]);
@@ -441,31 +439,11 @@ export function SearchExperience({ basePath, defaultView = "list", heading, adva
   return (
     <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 pb-24 lg:px-6">
       {heading}
-      <SmartSearch onApply={(next, nextSort) => navigate({ filters: next, sort: nextSort ?? "score" })} />
       <SearchPanel
         initial={filters}
         busy={running}
-        defaultAdvanced={advancedOpen}
         onSearch={(next) => navigate({ filters: next })}
         onReset={() => navigate({ filters: null, sort: null, page: null })}
-        actions={
-          filters ? (
-            <>
-              <SaveSearchDialog filters={filters} />
-              <Button asChild variant="outline">
-                <Link href="/compare">
-                  <GitCompareArrows /> Compare properties
-                </Link>
-              </Button>
-            </>
-          ) : (
-            <Button asChild variant="outline">
-              <Link href="/compare">
-                <GitCompareArrows /> Compare properties
-              </Link>
-            </Button>
-          )
-        }
       />
 
       {!filters ? idle : null}
@@ -500,14 +478,25 @@ export function SearchExperience({ basePath, defaultView = "list", heading, adva
                 {data && data.summary.total !== data.total ? <span className="font-normal text-muted-foreground"> of {data.summary.total.toLocaleString()} analysed</span> : null}
               </h2>
               <p className="text-xs text-muted-foreground">
-                {job.listings_fetched?.toLocaleString() ?? 0} listings retrieved · ranked by calculated returns{job.cached ? " · from cache" : ""} ·{" "}
-                <button type="button" className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground" onClick={() => setRefreshToken((t) => t + 1)}>
-                  <RefreshCw className="size-3" aria-hidden /> Refresh from providers
-                </button>
+                {job.listings_fetched?.toLocaleString() ?? 0} listings analysed · ranked by calculated returns
+                {isAdmin ? (
+                  <>
+                    {" · "}
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
+                      onClick={() => setRefreshToken((t) => t + 1)}
+                      title="Re-fetch listings from the provider (uses paid API requests)"
+                    >
+                      <RefreshCw className="size-3" aria-hidden /> Refresh data
+                    </button>
+                  </>
+                ) : null}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <div className="w-64">
+              {filters ? <SaveSearchDialog filters={filters} /> : null}
+              <div className="w-60">
                 <Select aria-label="Sort results" value={sort} onChange={(e) => navigate({ sort: e.target.value })}>
                   {SORT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>

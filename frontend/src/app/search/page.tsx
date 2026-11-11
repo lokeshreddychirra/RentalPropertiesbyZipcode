@@ -10,16 +10,15 @@ export default function SearchPage() {
     <React.Suspense fallback={<div className="p-6"><Skeleton className="h-40 w-full" /></div>}>
       <SearchExperience
         basePath="/search"
-        advancedOpen
         heading={
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Search properties</h1>
-            <p className="text-sm text-muted-foreground">Filter by location, price and return thresholds. Results are ranked from actual financial calculations.</p>
+            <p className="text-sm text-muted-foreground">Every listing is analysed as a long-term and short-term rental and ranked by calculated returns.</p>
           </div>
         }
         idle={
           <EmptyState icon={<Search />} title="Set a location to begin">
-            Enter a city, one or more ZIP codes, a county and state, or a state — or describe what you want in plain English above.
+            Enter a city and state, one or more ZIP codes, or a state above.
           </EmptyState>
         }
       />

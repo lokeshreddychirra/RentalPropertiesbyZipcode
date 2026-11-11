@@ -36,6 +36,7 @@ from app.core.redis import cache_get_json, cache_set_json, get_redis
 from app.finance.scoring import ScoreWeights
 from app.models.tables import MarketSnapshot
 from app.providers.base import (
+    BedroomStat,
     BudgetExceeded,
     ListingPage,
     ListingProvider,
@@ -248,10 +249,18 @@ async def resolve_locations(filters: SearchFilters, providers: ProviderSet) -> R
 # --------------------------------------------------------------------------- fetching
 
 
+def _page_cache_key(kind: str, provider: Any, query: ListingQuery, offset: int) -> str:
+    # Key on what is actually sent to the provider, so filters applied locally (price, beds, type)
+    # never cause a new paid request for an area that is already cached.
+    request_params = getattr(provider, "request_params", None)
+    identity = json.dumps(request_params(query), sort_keys=True, default=str) if request_params else query.model_dump_json()
+    return f"{kind}:" + hashlib.sha256(f"{provider.key}|{identity}|{offset}|{provider.page_size}".encode()).hexdigest()
+
+
 async def _cached_page(provider: ListingProvider, query: ListingQuery, offset: int, refresh: bool) -> ListingPage:
     settings = get_settings()
     cacheable = provider.key != "demo"
-    key = "listings:" + hashlib.sha256(f"{provider.key}|{query.model_dump_json()}|{offset}|{provider.page_size}".encode()).hexdigest()
+    key = _page_cache_key("listings", provider, query, offset)
     if cacheable and not refresh:
         cached = await cache_get_json(key)
         if cached is not None:
@@ -363,6 +372,151 @@ async def get_market_stats(providers: ProviderSet, zip_code: str, *, refresh: bo
         stmt = insert(MarketSnapshot).values(id=uuid.uuid4(), zip_code=zip_code, provider_key=provider.key, data=stats.model_dump(mode="json"), fetched_at=stats.fetched_at)
         await session.execute(stmt.on_conflict_do_update(index_elements=["zip_code", "provider_key"], set_=dict(data=stmt.excluded.data, fetched_at=stmt.excluded.fetched_at)))
     return stats
+
+
+
+def _rentals_key(provider_key: str) -> str:
+    return f"{provider_key}:rentals"
+
+
+def stats_from_rentals(records: list[ListingRecord], provider_key: str, fetched_at: datetime) -> dict[str, MarketStats]:
+    """Per-ZIP rent statistics aggregated from active long-term rental listings."""
+    by_zip: dict[str, dict[str, ListingRecord]] = {}
+    for record in records:
+        rent = record.price
+        if record.status != "active" or not record.zip_code or rent is None or not (Decimal(300) <= rent <= Decimal(50000)):
+            continue
+        by_zip.setdefault(record.zip_code, {})[record.formatted_address.lower()] = record  # one per address
+    out: dict[str, MarketStats] = {}
+    for zip_code, unique in by_zip.items():
+        rows = list(unique.values())
+        rents = [r.price for r in rows if r.price is not None]
+        per_sqft = [r.price / r.square_feet for r in rows if r.price is not None and r.square_feet and r.square_feet >= 250]
+        buckets: dict[int, list[Decimal]] = {}
+        for r in rows:
+            if r.bedrooms is not None and r.price is not None:
+                buckets.setdefault(min(int(r.bedrooms), 6), []).append(r.price)
+        out[zip_code] = MarketStats(
+            provider=provider_key,
+            zip_code=zip_code,
+            median_rent=_median(rents),
+            average_rent=(sum(rents, Decimal(0)) / len(rents)).quantize(Decimal("1")) if rents else None,
+            rental_listings=len(rents),
+            median_rent_per_sqft=_median(per_sqft),
+            rent_by_bedrooms=[
+                BedroomStat(bedrooms=beds, median=_median(values), average=(sum(values, Decimal(0)) / len(values)).quantize(Decimal("1")), low=min(values), high=max(values), count=len(values))
+                for beds, values in sorted(buckets.items())
+            ],
+            fetched_at=fetched_at,
+            source="rental_listings",
+        )
+    return out
+
+
+async def _fetch_rentals(provider: Any, queries: list[ListingQuery], refresh: bool) -> tuple[list[ListingRecord], str | None]:
+    """All pages (up to ``AREA_RENT_MAX_PAGES`` per location) of active rental listings, cached like sale listings."""
+    settings = get_settings()
+    records: list[ListingRecord] = []
+    for query in queries:
+        offset = 0
+        for _ in range(max(settings.area_rent_max_pages, 1)):
+            key = _page_cache_key("rentals", provider, ListingQuery(**query.model_dump(include={"zip_code", "city", "state", "latitude", "longitude", "radius_miles"})), offset)
+            cached = None if refresh else await cache_get_json(key)
+            if cached is not None:
+                page = ListingPage.model_validate(cached)
+            else:
+                try:
+                    page = await provider.search_rental_listings(query, offset=offset, limit=provider.page_size)
+                except BudgetExceeded as exc:
+                    return records, f"{provider.name} budget reached ({exc.message})"
+                except ProviderError as exc:
+                    return records, f"{provider.name} rental listings unavailable ({exc.message})"
+                await cache_set_json(key, page.model_dump(mode="json"), settings.listing_cache_ttl_seconds)
+            records.extend(page.listings)
+            if not page.has_more or page.next_offset <= offset:
+                break
+            offset = page.next_offset
+    return records, None
+
+
+async def _save_snapshots(provider_key: str, stats: dict[str, MarketStats]) -> None:
+    if not stats:
+        return
+    async with session_scope() as session:
+        for zip_code, item in stats.items():
+            stmt = insert(MarketSnapshot).values(id=uuid.uuid4(), zip_code=zip_code, provider_key=provider_key, data=item.model_dump(mode="json"), fetched_at=item.fetched_at)
+            await session.execute(stmt.on_conflict_do_update(index_elements=["zip_code", "provider_key"], set_=dict(data=stmt.excluded.data, fetched_at=stmt.excluded.fetched_at)))
+
+
+async def load_area_rent_stats(
+    providers: ProviderSet, zip_counts: dict[str, int], queries: list[ListingQuery], *, refresh: bool, partial: list[str], warnings: list[str]
+) -> dict[str, MarketStats]:
+    """Rent statistics for the ZIP codes of the candidates, spending as few paid requests as possible.
+
+    1. Fresh cached statistics (market API or rental-listing aggregates) — free.
+    2. The area's active rental listings, aggregated per ZIP — one paginated request per searched
+       location instead of one request per ZIP code.
+    3. The market-statistics endpoint for ZIPs still lacking a reliable sample, capped at
+       ``MARKET_STATS_FALLBACK_MAX`` per search (unlimited in demo mode).
+    """
+    market = providers.market
+    if market is None or not zip_counts:
+        return {}
+    settings = get_settings()
+    zips = sorted(zip_counts, key=lambda z: (-zip_counts[z], z))
+    rentals_key = _rentals_key(market.key)
+    result: dict[str, MarketStats] = {}
+
+    if not refresh:
+        cutoff = datetime.now(UTC) - timedelta(days=settings.market_stats_ttl_days)
+        async with session_scope() as session:
+            rows = (
+                await session.execute(
+                    select(MarketSnapshot).where(MarketSnapshot.zip_code.in_(zips), MarketSnapshot.provider_key.in_([market.key, rentals_key]), MarketSnapshot.fetched_at >= cutoff)
+                )
+            ).scalars().all()
+        cached: dict[str, dict[str, MarketStats]] = {}
+        for row in rows:
+            cached.setdefault(row.zip_code, {})[row.provider_key] = MarketStats.model_validate(row.data)
+        for zip_code, options in cached.items():
+            for key in (market.key, rentals_key):  # prefer the provider's own statistics
+                if key in options and options[key].has_reliable_rent():
+                    result[zip_code] = options[key]
+                    break
+
+    missing = [z for z in zips if z not in result]
+    search_rentals = getattr(market, "search_rental_listings", None)
+    if missing and search_rentals is not None:
+        records, problem = await _fetch_rentals(market, queries, refresh)
+        aggregated = stats_from_rentals(records, market.key, datetime.now(UTC))
+        await _save_snapshots(rentals_key, aggregated)
+        for zip_code in missing:
+            if zip_code in aggregated and aggregated[zip_code].has_reliable_rent():
+                result[zip_code] = aggregated[zip_code]
+        if problem:
+            warnings.append(f"Area rents: {problem}.")
+
+    missing = [z for z in zips if z not in result]
+    cap = len(missing) if market.key == "demo" else max(settings.market_stats_fallback_max, 0)
+    for zip_code in missing[:cap]:
+        try:
+            stats = await get_market_stats(providers, zip_code, refresh=refresh)
+        except BudgetExceeded as exc:
+            partial.append(f"Rent statistics could not be loaded for every ZIP code because the {market.name} budget was reached ({exc.message}). Properties without a rent estimate are shown as unranked.")
+            break
+        except ProviderError as exc:
+            warnings.append(f"Rent statistics unavailable for ZIP {zip_code} ({exc.message}).")
+            continue
+        if stats is not None:
+            result[zip_code] = stats
+    skipped = [z for z in zips if z not in result]
+    if skipped:
+        count = sum(zip_counts[z] for z in skipped)
+        warnings.append(
+            f"{count} propert{'y' if count == 1 else 'ies'} in ZIP {', '.join(skipped[:6])}{'…' if len(skipped) > 6 else ''} "
+            "had too few rental listings for an area rent estimate and are shown unranked. Open a property to request its own estimate."
+        )
+    return result
 
 
 # --------------------------------------------------------------------------- cards
@@ -509,23 +663,13 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
         contexts = await property_store.load_contexts(session, candidate_ids)
 
     needs_rent = [c for c in contexts.values() if c.rent is None and c.zip_code]
-    zips = sorted({c.zip_code for c in needs_rent if c.zip_code})
-    if zips and providers.market is not None:
-        market_by_zip: dict[str, MarketStats] = {}
-        for index, zip_code in enumerate(zips):
-            try:
-                stats = await get_market_stats(providers, zip_code)
-            except BudgetExceeded as exc:
-                partial.append(f"Rent statistics could not be loaded for every ZIP code because the {providers.market.name} budget was reached ({exc.message}). Properties without a rent estimate are shown as unranked.")
-                break
-            except ProviderError as exc:
-                warnings.append(f"Rent statistics unavailable for ZIP {zip_code} ({exc.message}).")
-                continue
-            if stats is not None:
-                market_by_zip[zip_code] = stats
-            state.stage, state.message = "rent_estimates", f"Loaded rent statistics for {index + 1} of {len(zips)} ZIP codes"
-            state.percent = 52 + int(8 * (index + 1) / len(zips))
-            await progress(state)
+    zip_counts: dict[str, int] = {}
+    for c in needs_rent:
+        zip_counts[c.zip_code] = zip_counts.get(c.zip_code, 0) + 1  # type: ignore[index]
+    if zip_counts and providers.market is not None:
+        state.stage, state.message, state.percent = "rent_estimates", f"Loading area rents for {len(zip_counts)} ZIP code{'s' if len(zip_counts) != 1 else ''}", 55
+        await progress(state)
+        market_by_zip = await load_area_rent_stats(providers, zip_counts, resolved.queries, refresh=request.refresh, partial=partial, warnings=warnings)
         rows: list[tuple[uuid.UUID, RentEstimateRecord]] = []
         for ctx in needs_rent:
             stats = market_by_zip.get(ctx.zip_code or "")
@@ -649,7 +793,7 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
         if targets:
             partial.extend(await run_stage("str_estimates", "Short-term rental estimates", targets, fetch_str, 78))
     elif providers.short_term is None and filters.strategy in ("str", "both"):
-        warnings.append("No short-term rental analytics provider is configured, so STR revenue is unavailable unless you enter a nightly rate and occupancy on a property. Set AIRDNA_API_KEY to enable STR estimates.")
+        warnings.append("Short-term rental revenue isn't estimated automatically (no short-term rental data source is connected). Open a property and enter a nightly rate and occupancy to model it.")
 
     # -- final ranking -----------------------------------------------------------
     state.stage, state.message, state.percent = "ranking", "Calculating returns and ranking", 94
