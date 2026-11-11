@@ -6,7 +6,9 @@ import { AlertTriangle, Bot, CheckCircle2, CircleHelp, ListChecks, ShieldAlert, 
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Skeleton, Table, Td, Th } from "@/components/ui/card";
 import { Field, Input, NumberInput } from "@/components/ui/form";
+import { Hint } from "@/components/ui/overlays";
 import { api, errorMessage, type AnalysisBody } from "@/lib/api";
+import type { QuickLtr } from "@/lib/ltr-model";
 import type {
   AIExplanationResponse,
   Comparable,
@@ -22,6 +24,7 @@ import type {
 } from "@/lib/types";
 import { cn, num, pct, ratio, relativeTime, shortDate, signTone, titleCase, usd } from "@/lib/utils";
 import { ConfidenceBadge, ProvenanceDot, ScoreRing } from "./bits";
+import { Delta, formatSim, SIM_METRICS, simValues } from "./sim-metrics";
 import { ExpenseChart, ForecastCashFlowChart, ForecastWealthChart, SERIES } from "./charts";
 
 const STRATEGY_LABEL: Record<Strategy, string> = { ltr: "Long-term rental", str: "Long-term rental" };
@@ -36,54 +39,64 @@ function Unavailable({ result }: { result: StrategyResult }) {
 
 // ----------------------------------------------------------------------------- recommendation + headline
 
-export function HeadlineMetrics({ analysis }: { analysis: PropertyAnalysis }) {
-  const columns: { key: Strategy; result: StrategyResult; score: InvestmentScore; quality: QualityAssessment }[] = [
-    { key: "ltr", result: analysis.long_term, score: analysis.score_ltr, quality: analysis.quality_ltr },
-  ];
+export function HeadlineMetrics({ analysis, baseline, live, pending, changed, onReset }: { analysis: PropertyAnalysis; baseline?: PropertyAnalysis; live?: QuickLtr | null; pending?: boolean; changed?: boolean; onReset?: () => void }) {
+  const result = analysis.long_term;
+  const score = analysis.score_ltr;
+  const showLive = Boolean(pending && live);
+  const current = simValues(showLive ? live : result);
+  const original = simValues(baseline?.long_term);
   return (
-    <div className="grid gap-4">
-      {columns.map(({ key, result, score, quality }) => (
-        <Card key={key}>
-          <CardHeader className="flex-row items-center justify-between gap-3">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                {STRATEGY_LABEL[key]} returns
-              </CardTitle>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                <ConfidenceBadge level={quality.label} />
-              </div>
-            </div>
-            <ScoreRing score={score.score} size={56} />
-          </CardHeader>
-          <CardContent>
-            {result.available ? (
-              <dl className="grid grid-cols-3 gap-x-3 gap-y-3 sm:grid-cols-6">
-                {[
-                  ["Monthly cash flow", `${usd(result.monthly_cash_flow)}`, signTone(result.monthly_cash_flow)],
-                  ["Cash-on-cash", pct(result.cash_on_cash_pct, 2), signTone(result.cash_on_cash_pct)],
-                  ["Cap rate", pct(result.cap_rate_pct, 2), ""],
-                  ["Gross yield", pct(result.gross_yield_pct, 2), ""],
-                  ["DSCR", result.dscr != null ? ratio(result.dscr) : "N/A", ""],
-                  ["Upfront cash", usd(result.total_cash_invested), ""],
-                ].map(([label, value, tone]) => (
-                  <div key={label}>
-                    <dt className="text-[11px] text-muted-foreground">{label}</dt>
-                    <dd className={cn("tnum text-base font-semibold", tone)}>{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <Unavailable result={result} />
-            )}
-            {score.cap_applied ? (
-              <p className="mt-3 flex items-start gap-1.5 text-xs text-caution">
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {score.cap_applied}
-              </p>
+    <Card>
+      <CardHeader className="flex-row items-center justify-between gap-3">
+        <div>
+          <CardTitle className="flex items-center gap-2">{STRATEGY_LABEL.ltr} returns</CardTitle>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <ConfidenceBadge level={analysis.quality_ltr.label} />
+            {changed ? (
+              <span className="text-xs text-muted-foreground">
+                With your changes{onReset ? (
+                  <>
+                    {" · "}
+                    <button type="button" onClick={onReset} className="font-medium text-foreground underline underline-offset-2">
+                      Reset
+                    </button>
+                  </>
+                ) : null}
+              </span>
             ) : null}
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+          </div>
+        </div>
+        <div className={cn("transition-opacity", pending && "opacity-50")}>
+          <ScoreRing score={score.score} size={56} />
+        </div>
+      </CardHeader>
+      <CardContent>
+        {result.available || showLive ? (
+          <dl className="grid grid-cols-3 gap-x-3 gap-y-3 sm:grid-cols-6" data-testid="headline-metrics">
+            {SIM_METRICS.map((metric) => (
+              <div key={metric.key} className="min-w-0">
+                <Hint content={metric.help}>
+                  <dt className="text-[11px] text-muted-foreground" tabIndex={0}>
+                    {metric.label}
+                  </dt>
+                </Hint>
+                <dd className={cn("tnum text-base font-semibold", metric.signed && signTone(current[metric.key]))}>{formatSim(metric, current[metric.key])}</dd>
+                <dd className="h-4 leading-4">
+                  <Delta metric={metric} value={current[metric.key]} original={original[metric.key]} />
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <Unavailable result={result} />
+        )}
+        {score.cap_applied ? (
+          <p className="mt-3 flex items-start gap-1.5 text-xs text-caution">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {score.cap_applied}
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 

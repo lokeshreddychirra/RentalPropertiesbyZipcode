@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton, Table, Td, Th } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTrigger, Hint, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/overlays";
 import { api, ApiError, errorMessage, type AnalysisBody } from "@/lib/api";
+import { applyOverrides, quickLtr } from "@/lib/ltr-model";
 import { useApp, useFavoriteIds, useSession, useStatus } from "@/lib/store";
 import type { AssumptionOverrides, AssumptionSection, PropertyDetail, Strategy } from "@/lib/types";
 import { cn, num, pct, relativeTime, shortDate, titleCase, usd, zillowUrl } from "@/lib/utils";
@@ -197,6 +198,21 @@ export default function PropertyPage() {
   const activeStrategy: Strategy = "ltr";
   const pending = analysisQuery.isFetching || debouncedOverrides !== overrides;
 
+  // The same request without this page's changes: the "original" every change is compared with.
+  // It shares the cache entry made when the page first loaded, so it costs no extra call.
+  const baselineBody: AnalysisBody = React.useMemo(() => ({ ...body, overrides: {} }), [body]);
+  const baselineQuery = useQuery({
+    queryKey: ["analysis", JSON.stringify([baselineBody, estimateStamp])],
+    queryFn: ({ signal }) => api.calculate(baselineBody, signal),
+    enabled: !!ctx && hydrated,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const baseline = baselineQuery.data;
+  // Instant year-one numbers while the server recalculates (the simulator stays responsive).
+  const live = React.useMemo(() => (baseline ? quickLtr(applyOverrides(baseline.assumptions, overrides)) : null), [baseline, overrides]);
+  const changed = Object.keys(overrides).length > 0;
+
   // Signed-in users: financing scenarios are saved to the account and restored here.
   const presets = useQuery({ queryKey: ["financing-presets", user?.id], queryFn: api.financingPresets, enabled: !!user, staleTime: 60_000 });
   const presetsLoaded = React.useRef(false);
@@ -257,7 +273,7 @@ export default function PropertyPage() {
   const analysisError = analysisQuery.error ? errorMessage(analysisQuery.error) : null;
 
   const assumptionsPanel = analysis ? (
-    <AssumptionsPanel analysis={analysis} overrides={overrides} onChange={setField} onResetAll={() => setOverrides({})} pending={pending} />
+    <AssumptionsPanel analysis={analysis} baseline={baseline} live={live} overrides={overrides} onChange={setField} onResetAll={() => setOverrides({})} pending={pending} />
   ) : (
     <Skeleton className="h-96 w-full" />
   );
@@ -323,10 +339,10 @@ export default function PropertyPage() {
           <Dialog>
             <DialogTrigger asChild>
               <Button variant="outline" className="xl:hidden">
-                <SlidersHorizontal /> Assumptions
+                <SlidersHorizontal /> Simulate
               </Button>
             </DialogTrigger>
-            <DialogContent side="right" title="Assumptions" description="Changes recalculate every metric on this page.">
+            <DialogContent side="right" title="Deal simulator" description="Adjust price, financing and rent to see how the returns change.">
               {assumptionsPanel}
             </DialogContent>
           </Dialog>
@@ -360,7 +376,7 @@ export default function PropertyPage() {
               {analysisError}
             </Alert>
           ) : null}
-          {analysis ? <div className={cn(pending && "opacity-70 transition-opacity")}><HeadlineMetrics analysis={analysis} /></div> : <Skeleton className="h-56 w-full" />}
+          {analysis ? <HeadlineMetrics analysis={analysis} baseline={baseline} live={live} pending={pending} changed={changed} onReset={() => setOverrides({})} /> : <Skeleton className="h-56 w-full" />}
 
           <Tabs value={tab} onValueChange={setTab}>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -489,7 +505,7 @@ export default function PropertyPage() {
                       {analysis?.long_term.available ? (
                         <p className="px-5 text-xs text-muted-foreground">
                           Used in the model: {usd(analysis.assumptions.long_term.monthly_rent)}/mo · vacancy {analysis.assumptions.long_term.vacancy_pct}% · effective gross income {usd(analysis.long_term.effective_gross_income)}/yr.
-                          {analysis.provenance["long_term.monthly_rent"] === "user" ? " You have overridden the estimate." : " Override it under Assumptions → Long-term rental."}
+                          {analysis.provenance["long_term.monthly_rent"] === "user" ? " You have overridden the estimate." : " Change it with the Monthly rent slider in the deal simulator."}
                         </p>
                       ) : null}
                       {rent.data.level === "market_zip" ? (
@@ -505,7 +521,7 @@ export default function PropertyPage() {
                   ) : (
                     <div className="px-5 pb-5">
                       <Alert tone="warning" title="Rent estimate unavailable">
-                        {rent.data?.reason ?? "No reliable estimate could be retrieved."} Enter a monthly rent under Assumptions to model the long-term rental scenario.
+                        {rent.data?.reason ?? "No reliable estimate could be retrieved."} Enter a monthly rent in the deal simulator to model this property.
                       </Alert>
                     </div>
                   )}

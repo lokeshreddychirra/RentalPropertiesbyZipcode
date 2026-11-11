@@ -16,7 +16,7 @@ calculated returns — not by price or estimated rent.
   rate, cash-on-cash, cash flow).
 * **Rank** every match with a deterministic financial engine and a configurable 0–100
   investment score; sort by ten return metrics. List, map, map + list and comparison-table views.
-* **Analyse** a property in depth: editable assumptions with instant recalculation,
+* **Analyse** a property in depth: a deal simulator (sliders for price, down payment, rate and rent that update returns as you drag),
   expense breakdown, mortgage, 1–30 year forecast, financing
   scenarios, conservative/base/optimistic cases, sensitivity tables, risk and data-quality
   assessment, rent and sale comparables, and a grounded AI explanation.

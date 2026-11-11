@@ -76,3 +76,61 @@
   padding: 0;
   box-shadow: 0 8px 24px rgb(16 24 40 / 0.16);
 }
+
+/* Range slider used by the deal simulator: filled track up to the thumb (--fill). */
+.sim-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 1.25rem;
+  width: 100%;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.sim-slider:focus-visible {
+  outline: none;
+}
+.sim-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #2a78d6 0, #2a78d6 var(--fill, 0%), #dde3ea var(--fill, 0%), #dde3ea 100%);
+}
+.sim-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: #dde3ea;
+}
+.sim-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 9999px;
+  background: #2a78d6;
+}
+.sim-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -6px;
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 2px solid #2a78d6;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+  transition: transform 120ms ease;
+}
+.sim-slider::-moz-range-thumb {
+  height: 14px;
+  width: 14px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 2px solid #2a78d6;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+.sim-slider:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+.sim-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgb(42 120 214 / 0.3);
+}
+.sim-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 4px rgb(42 120 214 / 0.3);
+}

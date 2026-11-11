@@ -133,3 +133,36 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
   );
 });
 NumberInput.displayName = "NumberInput";
+
+interface SliderProps {
+  id?: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onValueChange: (value: number) => void;
+  /** Spoken value for screen readers, e.g. "$45,000" or "20 percent". */
+  valueText?: string;
+  label?: string;
+  className?: string;
+}
+
+/** Native range input (keyboard, touch and screen-reader friendly) with a filled track. */
+export function Slider({ id, value, min, max, step, onValueChange, valueText, label, className }: SliderProps) {
+  const fill = max > min ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100)) : 0;
+  return (
+    <input
+      id={id}
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      aria-label={label}
+      aria-valuetext={valueText}
+      onChange={(event) => onValueChange(Number(event.target.value))}
+      className={cn("sim-slider", className)}
+      style={{ "--fill": `${fill}%` } as React.CSSProperties}
+    />
+  );
+}
