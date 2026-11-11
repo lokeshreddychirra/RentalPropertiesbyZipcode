@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Menu, Search, TrendingUp, User as UserIcon, Users } from "@/components/ui/icons";
+import { BarChart3, Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Menu, Moon, Search, Sun, TrendingUp, User as UserIcon, Users } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/overlays";
@@ -30,11 +30,11 @@ function useAccess(): (access: Access) => boolean {
 function Brand() {
   return (
     <Link href="/" className="flex items-center gap-2.5 px-1" aria-label="PropertyYield AI home">
-      <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-        <TrendingUp className="size-4" aria-hidden />
+      <span className="btn-brand flex size-9 items-center justify-center rounded-xl">
+        <TrendingUp className="size-5" aria-hidden />
       </span>
       <span className="body-4 whitespace-nowrap tracking-tight">
-        PropertyYield <span className="text-positive">AI</span>
+        PropertyYield <span className="text-brand">AI</span>
       </span>
     </Link>
   );
@@ -56,13 +56,14 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             aria-current={active ? "page" : undefined}
             style={onNavigate ? { animationDelay: `${Math.min(index * 60, 400)}ms` } : undefined}
             className={cn(
-              "title-4 flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
-              active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+              "title-4 group/nav relative flex items-center gap-3 rounded-xl px-3 py-2 transition-[color,background-color,box-shadow]",
+              active ? "bg-primary/15 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.3)]" : "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
               onNavigate && "nav-enter",
             )}
           >
-            <Icon className="size-4 shrink-0" aria-hidden />
+            <Icon className={cn("size-5 shrink-0 transition-colors", active ? "text-primary" : "group-hover/nav:text-foreground")} aria-hidden />
             <span className="flex-1">{label}</span>
+            {active ? <span className="size-1.5 rounded-full bg-[var(--brand-b)] shadow-[0_0_10px_var(--brand-b)]" aria-hidden /> : null}
             {href === "/compare" && compare.length > 0 ? <Badge tone="solid">{compare.length}</Badge> : null}
           </Link>
         );
@@ -143,7 +144,7 @@ function UserMenu() {
   if (!user) {
     return (
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="sm">
+        <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
           <Link href="/login">Sign in</Link>
         </Button>
         <Button asChild size="sm" variant="outline">
@@ -208,7 +209,7 @@ export function DemoBanner() {
   const { user } = useSession();
   if (!data || data.data_mode !== "demo") return null;
   return (
-    <div role="status" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 border-b border-[#d6ccfb] bg-[#f5f3ff] px-4 py-2 text-center text-xs text-[#4c1d95]">
+    <div role="status" className="mx-2 mt-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 rounded-xl border border-demo/25 bg-demo-soft px-4 py-2 text-center text-xs text-demo lg:mx-4">
       <Badge tone="demo" className="font-semibold uppercase tracking-wide">
         Demo data
       </Badge>
@@ -222,6 +223,37 @@ export function DemoBanner() {
   );
 }
 
+/** Light / dark switch. Dark is the default; the choice is remembered on this device. */
+function ThemeToggle() {
+  const [dark, setDark] = React.useState(true);
+  React.useEffect(() => setDark(document.documentElement.classList.contains("dark")), []);
+  const toggle = () => {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    try {
+      localStorage.setItem("theme", next ? "dark" : "light");
+    } catch {
+      /* storage unavailable: the choice lasts for this page view */
+    }
+  };
+  return (
+    <Button variant="ghost" size="icon" onClick={toggle} aria-label={dark ? "Switch to light theme" : "Switch to dark theme"} title={dark ? "Light theme" : "Dark theme"}>
+      {dark ? <Sun /> : <Moon />}
+    </Button>
+  );
+}
+
+function Aurora() {
+  return (
+    <div className="aurora" aria-hidden>
+      <span />
+      <span />
+      <span />
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -230,25 +262,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (bare) {
     return (
       <div className="min-h-screen">
+        <Aurora />
         <DemoBanner />
-        {children}
+        <div key={pathname} className="page-enter">
+          {children}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex min-h-screen">
+      <Aurora />
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:text-primary-foreground">
         Skip to content
       </a>
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-6 border-r bg-card px-3 py-4 lg:flex">
+      <aside className="glass sticky top-2 m-2 hidden h-[calc(100vh-1rem)] w-60 shrink-0 flex-col gap-6 rounded-2xl px-3 py-4 lg:flex">
         <Brand />
         <NavLinks />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <DemoBanner />
-        <header className="sticky top-2 z-30 mx-2 mt-2 flex h-14 items-center gap-3 rounded-2xl border bg-card/75 px-3 shadow-sm backdrop-blur-md lg:mx-4 lg:px-4">
+        <header className="glass sticky top-2 z-30 mx-2 mt-2 flex h-14 items-center gap-3 rounded-2xl px-3 lg:ml-0 lg:mr-4 lg:px-4">
           <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation">
@@ -268,12 +304,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="ml-auto flex items-center gap-2">
             <PlanChip />
+            <ThemeToggle />
             <Notifications />
             <UserMenu />
           </div>
         </header>
         <main id="main" className="flex-1">
-          {children}
+          <div key={pathname} className="page-enter">
+            {children}
+          </div>
         </main>
         <footer className="caption-5 text-pretty px-4 py-6 text-center text-muted-foreground lg:px-6">
           Estimates and projections are for research only and are not financial, legal or tax advice. Verify listings, rents and taxes independently before investing.

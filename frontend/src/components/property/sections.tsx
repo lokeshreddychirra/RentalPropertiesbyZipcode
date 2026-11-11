@@ -394,7 +394,7 @@ export function ForecastSection({ analysis, strategy, onImprovementsChange }: { 
 
       {onImprovementsChange ? <CapitalImprovements items={(fc.capital_improvements ?? []) as Improvement[]} onChange={onImprovementsChange} /> : null}
 
-      <details className="rounded-lg border bg-card">
+      <details className="glass rounded-xl">
         <summary className="cursor-pointer px-5 py-3 text-sm font-medium">Year-by-year projection table</summary>
         <Table>
           <thead>

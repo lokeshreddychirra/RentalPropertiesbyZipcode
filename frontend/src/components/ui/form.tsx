@@ -11,7 +11,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
     type={type}
     ref={ref}
     className={cn(
-      "flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50",
+      "flex h-9 w-full rounded-lg border border-input bg-card/60 px-3 py-1 text-sm shadow-sm transition-[border-color,box-shadow] placeholder:text-muted-foreground/70 focus-visible:border-primary/60 focus-visible:shadow-glow disabled:cursor-not-allowed disabled:opacity-50",
       className,
     )}
     {...props}
@@ -22,7 +22,7 @@ Input.displayName = "Input";
 export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(({ className, ...props }, ref) => (
   <textarea
     ref={ref}
-    className={cn("flex min-h-[72px] w-full rounded-md border border-input bg-card px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground/70 disabled:opacity-50", className)}
+    className={cn("flex min-h-[72px] w-full rounded-lg border border-input bg-card/60 px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground/70 disabled:opacity-50", className)}
     {...props}
   />
 ));
@@ -38,7 +38,7 @@ export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttrib
   <div className="relative">
     <select
       ref={ref}
-      className={cn("h-9 w-full appearance-none rounded-md border border-input bg-card pl-3 pr-8 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50", className)}
+      className={cn("h-9 w-full appearance-none rounded-lg border border-input bg-card/60 pl-3 pr-8 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50 [&>option]:bg-popover", className)}
       {...props}
     >
       {children}

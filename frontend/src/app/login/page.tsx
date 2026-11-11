@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { HeroScene } from "@/components/marketing/hero-scene";
 import { TrendingUp } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Alert, Card } from "@/components/ui/card";
@@ -47,17 +48,17 @@ function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-2rem)] items-center justify-center px-4 py-10">
-      <Card className="w-full max-w-sm p-6">
-        <Link href="/" className="mb-5 flex items-center gap-2.5">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <TrendingUp className="size-4" aria-hidden />
+    <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-6xl items-center gap-8 px-4 py-10 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+      <Card className="w-full max-w-sm justify-self-center p-6 lg:justify-self-start">
+        <Link href="/" className="mb-6 flex items-center gap-3">
+          <span className="btn-brand flex size-9 items-center justify-center rounded-xl">
+            <TrendingUp className="size-5" aria-hidden />
           </span>
-          <span className="text-[15px] font-semibold tracking-tight">
-            PropertyYield <span className="text-positive">AI</span>
+          <span className="body-4 tracking-tight">
+            PropertyYield <span className="text-brand">AI</span>
           </span>
         </Link>
-        <h1 className="text-lg font-semibold">{mode === "login" ? "Sign in" : "Create your account"}</h1>
+        <h1 className="heading-6">{mode === "login" ? "Sign in" : "Create your account"}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {mode === "register" ? "Free accounts include one ZIP code search with full analysis of every listing." : "Sign in to search ZIP codes and save properties."}
         </p>
@@ -101,6 +102,13 @@ function LoginForm() {
           </Link>
         </p>
       </Card>
+      <div className="hidden lg:block" aria-hidden>
+        <p className="heading-4 hero-gradient max-w-[520px] text-balance">
+          Every home in the ZIP code, <span className="text-brand">priced as a rental</span>
+        </p>
+        <p className="body-6 mt-3 max-w-[520px] text-pretty text-muted-foreground">Cash flow, cap rate and cash on cash for every listing, with a deal simulator for your own numbers.</p>
+        <HeroScene className="mt-4 h-[420px]" />
+      </div>
     </div>
   );
 }

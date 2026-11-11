@@ -250,7 +250,7 @@ function Results({ analysis, baseline, live, pending }: { analysis: PropertyAnal
   const available = (pending && live) || analysis.long_term.available;
   return (
     <div className="sticky top-0 z-10 -mx-1 bg-background px-1 pb-2 pt-1 [[role=dialog]_&]:-top-5 [[role=dialog]_&]:bg-card [[role=dialog]_&]:pt-5" data-testid="sim-results">
-      <div className="rounded-lg border bg-card p-3 shadow-sm">
+      <div className="glass-strong rounded-xl p-3">
         {available ? (
           <dl className="grid grid-cols-3 gap-x-2 gap-y-2.5">
             {SIM_METRICS.map((metric) => {
@@ -307,7 +307,7 @@ export function AssumptionsPanel({ analysis, baseline, live = null, overrides, o
         const extra = group.fields.filter((f) => f.advanced);
         const fields = showAdvanced ? [...basic, ...extra] : basic;
         return (
-          <section key={group.key} className="rounded-lg border bg-card">
+          <section key={group.key} className="glass rounded-xl">
             <button type="button" className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium" aria-expanded={isOpen} onClick={() => setOpen((s) => ({ ...s, [group.key]: !isOpen }))}>
               {group.title}
               <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", isOpen && "rotate-180")} aria-hidden />
@@ -447,7 +447,7 @@ function FieldRow({ field, ctx, overrides, onChange }: { field: FieldDef; ctx: C
               onClick={() => set(preset.value)}
               className={cn(
                 "rounded-full border px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground",
-                numeric === preset.value && "border-[#2a78d6] bg-[#2a78d6]/10 text-[#1d5fb0]",
+                numeric === preset.value && "border-primary bg-primary/10 text-primary",
               )}
             >
               {preset.label}

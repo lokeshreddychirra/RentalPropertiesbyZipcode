@@ -7,6 +7,7 @@ import { PropertyImage } from "@/components/property/property-image";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Hint } from "@/components/ui/overlays";
+import { useTilt } from "@/components/ui/tilt";
 import { useApp, useFavoriteIds, useSession } from "@/lib/store";
 import type { PropertyCard as CardData, StrategyFilter, StrategySummary } from "@/lib/types";
 import { cn, num, pct, relativeTime, signTone, titleCase, usd } from "@/lib/utils";
@@ -42,13 +43,15 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
   const compared = isCompared(card.id);
   const saved = favorites.ids.has(card.id);
   const href = `/properties/${card.id}`;
+  const tilt = useTilt<HTMLDivElement>(4);
 
   return (
     <Card
       data-testid="property-card"
       onMouseEnter={() => onHover?.(card.id)}
       onMouseLeave={() => onHover?.(null)}
-      className={cn("group flex overflow-hidden transition-[box-shadow,transform] duration-500 hover:-translate-y-0.5 hover:shadow-lg", layout === "grid" ? "flex-col" : "flex-col sm:flex-row", selected && "ring-2 ring-[hsl(var(--ring))]")}
+      {...(layout === "grid" ? tilt : {})}
+      className={cn("group flex overflow-hidden", layout === "grid" && "tilt-3d", layout === "grid" ? "flex-col" : "flex-col sm:flex-row", selected && "ring-2 ring-[hsl(var(--ring))]")}
     >
       <Link href={href} className={cn("relative block shrink-0", layout === "grid" ? (card.image_url ? "aspect-[16/9] w-full" : "aspect-[16/6] w-full") : "aspect-[16/6] w-full sm:aspect-auto sm:w-52")} tabIndex={-1} aria-hidden>
         <PropertyImage id={card.id} url={card.image_url} type={card.property_type} alt={card.formatted_address} className="size-full" />
@@ -84,7 +87,7 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
           </div>
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-muted/60 p-3">
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg border border-[var(--glass-border)] bg-muted/50 p-3">
           <Metric
             label="Monthly rent"
             value={card.long_term.available ? `${usd(card.long_term.monthly_income)}/mo` : "Unavailable"}

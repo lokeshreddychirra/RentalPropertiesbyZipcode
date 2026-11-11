@@ -610,7 +610,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
                 ["Positive cash flow", `${data.summary.positive_cash_flow_count} of ${data.total}`],
                 ["Average score", data.summary.average_score != null ? data.summary.average_score.toFixed(0) : "—"],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border bg-card px-4 py-3">
+                <div key={label} className="glass rounded-xl px-4 py-3">
                   <dt className="caption-5 text-muted-foreground">{label}</dt>
                   <dd className="tnum title-2 mt-1">{value}</dd>
                 </div>

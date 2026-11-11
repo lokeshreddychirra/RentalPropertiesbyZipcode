@@ -8,6 +8,7 @@ import { Check } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, Skeleton } from "@/components/ui/card";
+import { useTilt } from "@/components/ui/tilt";
 import { api, errorMessage } from "@/lib/api";
 import { useAccount, useSession } from "@/lib/store";
 import type { PlanInfo } from "@/lib/types";
@@ -34,6 +35,7 @@ function Meter({ label, used, limit }: { label: string; used: number; limit: num
 }
 
 function PlanCard({ plan, current, billing, featured }: { plan: PlanInfo; current: boolean; billing: boolean; featured: boolean }) {
+  const tilt = useTilt<HTMLDivElement>(5);
   const { user } = useSession();
   const [busy, setBusy] = React.useState(false);
   const paid = plan.key !== "free";
@@ -54,12 +56,12 @@ function PlanCard({ plan, current, billing, featured }: { plan: PlanInfo; curren
   };
 
   return (
-    <Card className={cn("relative flex flex-col gap-5 p-6", featured && "border-primary shadow-md")}>
+    <Card className={cn("tilt-3d relative flex flex-col gap-5 p-6", featured && "ring-brand shadow-glow")} {...tilt}>
       {featured ? <Badge tone="solid" className="absolute -top-2.5 left-6">Most popular</Badge> : null}
       <div>
         <h2 className="text-lg font-semibold">{plan.name}</h2>
         <p className="mt-2 flex items-baseline gap-1">
-          <span className="tnum text-3xl font-semibold tracking-tight">${Number(plan.price_usd).toFixed(0)}</span>
+          <span className={cn("tnum text-3xl font-semibold tracking-tight", featured && "text-brand")}>${Number(plan.price_usd).toFixed(0)}</span>
           <span className="text-sm text-muted-foreground">{paid ? "/ month" : "forever"}</span>
         </p>
       </div>

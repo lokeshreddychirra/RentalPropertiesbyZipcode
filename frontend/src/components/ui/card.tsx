@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, Info, XCircle } from "@/components/ui/icon
 import { cn } from "@/lib/utils";
 
 export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("rounded-xl border bg-card text-card-foreground shadow-card", className)} {...props} />
+  <div ref={ref} className={cn("glass rounded-2xl text-card-foreground", className)} {...props} />
 ));
 Card.displayName = "Card";
 
@@ -32,7 +32,7 @@ const badgeVariants = cva("inline-flex items-center gap-1 rounded-full border px
       warning: "border-transparent bg-caution-soft text-caution",
       negative: "border-transparent bg-negative-soft text-negative",
       outline: "border-border bg-transparent text-muted-foreground",
-      demo: "border-transparent bg-[#ede9fe] text-[#5b21b6]",
+      demo: "border-transparent bg-demo-soft text-demo",
       solid: "border-transparent bg-primary text-primary-foreground",
     },
   },
@@ -50,11 +50,11 @@ export function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivEl
 }
 
 const ALERT_STYLES = {
-  info: { box: "border-[#c7d9f5] bg-[#f1f6fe] text-[#1e3a6b]", Icon: Info },
-  warning: { box: "border-[#f3d9a4] bg-caution-soft text-[#6b4208]", Icon: AlertTriangle },
-  error: { box: "border-[#f2c4c4] bg-negative-soft text-[#7f1d1d]", Icon: XCircle },
-  success: { box: "border-[#b9e2cd] bg-positive-soft text-[#14532d]", Icon: CheckCircle2 },
-  demo: { box: "border-[#d6ccfb] bg-[#f5f3ff] text-[#4c1d95]", Icon: Info },
+  info: { box: "border-info/25 bg-info-soft text-info", Icon: Info },
+  warning: { box: "border-caution/30 bg-caution-soft text-caution", Icon: AlertTriangle },
+  error: { box: "border-negative/30 bg-negative-soft text-negative", Icon: XCircle },
+  success: { box: "border-positive/30 bg-positive-soft text-positive", Icon: CheckCircle2 },
+  demo: { box: "border-demo/25 bg-demo-soft text-demo", Icon: Info },
 } as const;
 
 interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -65,7 +65,7 @@ interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {
 export function Alert({ tone = "info", title, className, children, ...props }: AlertProps) {
   const { box, Icon } = ALERT_STYLES[tone];
   return (
-    <div role={tone === "error" ? "alert" : "status"} className={cn("flex gap-3 rounded-lg border px-4 py-3 text-sm", box, className)} {...props}>
+    <div role={tone === "error" ? "alert" : "status"} className={cn("flex gap-3 rounded-xl border px-4 py-3 text-sm backdrop-blur-sm", box, className)} {...props}>
       <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="min-w-0 space-y-1">
         {title ? <p className="font-semibold leading-tight">{title}</p> : null}
@@ -93,7 +93,7 @@ export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCell
 
 export function EmptyState({ icon, title, children, action }: { icon?: React.ReactNode; title: string; children?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-card px-6 py-12 text-center">
+    <div className="glass flex flex-col items-center justify-center rounded-2xl border-dashed px-6 py-12 text-center">
       {icon ? <div className="mb-3 text-muted-foreground [&_svg]:size-8">{icon}</div> : null}
       <p className="title-2 text-balance">{title}</p>
       {children ? <div className="mt-2 max-w-md text-pretty text-sm text-muted-foreground">{children}</div> : null}

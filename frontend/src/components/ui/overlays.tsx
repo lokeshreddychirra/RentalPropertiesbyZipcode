@@ -24,13 +24,13 @@ interface DialogContentProps extends React.ComponentPropsWithoutRef<typeof Dialo
 export const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Content>, DialogContentProps>(
   ({ className, children, title, description, side = "center", ...props }, ref) => (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/45 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed z-50 bg-card shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out",
+          "glass-strong fixed z-50 shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out",
           side === "center" &&
-            "left-1/2 top-1/2 max-h-[90vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border p-6 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:fade-out-0",
+            "left-1/2 top-1/2 max-h-[90vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl p-6 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:fade-out-0",
           side === "right" && "inset-y-0 right-0 h-full w-[min(92vw,420px)] overflow-y-auto border-l p-5 data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right",
           side === "left" && "inset-y-0 left-0 h-full w-[min(86vw,300px)] overflow-y-auto border-r p-4 data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left",
           className,
@@ -66,7 +66,7 @@ export const DropdownMenuContent = React.forwardRef<React.ElementRef<typeof Drop
       <DropdownPrimitive.Content
         ref={ref}
         sideOffset={sideOffset}
-        className={cn("z-50 min-w-[11rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95", className)}
+        className={cn("glass-strong z-50 min-w-[11rem] overflow-hidden rounded-xl p-1 text-popover-foreground shadow-xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95", className)}
         {...props}
       />
     </DropdownPrimitive.Portal>
@@ -78,7 +78,7 @@ export const DropdownMenuItem = React.forwardRef<React.ElementRef<typeof Dropdow
   ({ className, ...props }, ref) => (
     <DropdownPrimitive.Item
       ref={ref}
-      className={cn("relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-accent data-[disabled]:opacity-50 [&_svg]:size-4", className)}
+      className={cn("relative flex cursor-pointer select-none items-center gap-2 rounded-lg px-2 py-2 text-sm outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-accent data-[disabled]:opacity-50 [&_svg]:size-4", className)}
       {...props}
     />
   ),
@@ -99,7 +99,7 @@ export const Tabs = TabsPrimitive.Root;
 
 export const TabsList = React.forwardRef<React.ElementRef<typeof TabsPrimitive.List>, React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>>(
   ({ className, ...props }, ref) => (
-    <TabsPrimitive.List ref={ref} className={cn("inline-flex h-9 items-center gap-0.5 rounded-lg bg-muted p-1 text-muted-foreground", className)} {...props} />
+    <TabsPrimitive.List ref={ref} className={cn("glass inline-flex h-10 items-center gap-1 rounded-xl p-1 text-muted-foreground", className)} {...props} />
   ),
 );
 TabsList.displayName = "TabsList";
@@ -109,7 +109,7 @@ export const TabsTrigger = React.forwardRef<React.ElementRef<typeof TabsPrimitiv
     <TabsPrimitive.Trigger
       ref={ref}
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm [&_svg]:size-4",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-1 text-sm font-medium transition-[color,background-color,box-shadow] hover:text-foreground disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-primary/15 data-[state=active]:text-foreground data-[state=active]:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)] [&_svg]:size-4",
         className,
       )}
       {...props}
@@ -157,7 +157,7 @@ export const PopoverContent = React.forwardRef<React.ElementRef<typeof PopoverPr
         ref={ref}
         align={align}
         sideOffset={sideOffset}
-        className={cn("z-50 w-72 max-w-[calc(100vw-2rem)] rounded-lg border bg-card p-4 text-sm shadow-lg outline-none", className)}
+        className={cn("glass-strong z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl p-4 text-sm shadow-xl outline-none", className)}
         {...props}
       />
     </PopoverPrimitive.Portal>

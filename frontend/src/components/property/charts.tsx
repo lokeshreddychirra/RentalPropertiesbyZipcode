@@ -6,14 +6,15 @@ import type { ForecastResult, PropertyAnalysis, StrategyResult } from "@/lib/typ
 import { pct, usd, usdCompact } from "@/lib/utils";
 
 // Categorical series colours (fixed order, never cycled). Status colours are not used for series.
+// Colours are theme tokens, so charts follow the light and dark themes.
 export const SERIES = {
-  ltr: "#2a78d6",
-  str: "#eb6834",
-  third: "#1baf7a",
-  fourth: "#eda100",
+  ltr: "var(--series-ltr)",
+  str: "var(--series-str)",
+  third: "var(--series-3)",
+  fourth: "var(--series-4)",
 };
-const AXIS = { fontSize: 11, fill: "#6b7280" };
-const GRID = "#e6e9ee";
+const AXIS = { fontSize: 12, fill: "var(--chart-axis)" };
+const GRID = "var(--chart-grid)";
 
 interface TipProps {
   active?: boolean;
@@ -26,7 +27,7 @@ interface TipProps {
 function Tip({ active, payload, label, format, labelPrefix }: TipProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-md border bg-card px-3 py-2 text-xs shadow-lg">
+    <div className="glass-strong rounded-xl px-3 py-2 text-xs">
       <p className="mb-1 font-medium">
         {labelPrefix}
         {label}
@@ -69,11 +70,11 @@ export function ReturnComparisonChart({ analysis }: { analysis: PropertyAnalysis
         <CartesianGrid vertical={false} stroke={GRID} />
         <XAxis dataKey="metric" tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} />
         <YAxis tick={AXIS} tickLine={false} axisLine={false} width={44} tickFormatter={(v: number) => `${v}%`} />
-        <ReferenceLine y={0} stroke="#9ca3af" />
-        <Tooltip cursor={{ fill: "#f3f4f6" }} content={<Tip format={(v) => pct(v, 2)} />} />
+        <ReferenceLine y={0} stroke="var(--chart-axis)" />
+        <Tooltip cursor={{ fill: "var(--chart-cursor)" }} content={<Tip format={(v) => pct(v, 2)} />} />
         {ltr.available ? (
           <Bar dataKey="ltr" name="Return" fill={SERIES.ltr} radius={[4, 4, 0, 0]} maxBarSize={36}>
-            <LabelList dataKey="ltr" position="top" formatter={(v: unknown) => (typeof v === "number" ? `${v.toFixed(1)}%` : "")} style={{ fontSize: 10, fill: "#374151" }} />
+            <LabelList dataKey="ltr" position="top" formatter={(v: unknown) => (typeof v === "number" ? `${v.toFixed(1)}%` : "")} style={{ fontSize: 10, fill: "var(--chart-label)" }} />
           </Bar>
         ) : null}
       </BarChart>
@@ -89,9 +90,9 @@ export function ExpenseChart({ result, color }: { result: StrategyResult; color:
       <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 64, left: 0, bottom: 0 }}>
         <XAxis type="number" hide />
         <YAxis type="category" dataKey="label" tick={AXIS} tickLine={false} axisLine={false} width={150} />
-        <Tooltip cursor={{ fill: "#f3f4f6" }} content={<Tip format={(v) => `${usd(v)} / yr`} />} />
+        <Tooltip cursor={{ fill: "var(--chart-cursor)" }} content={<Tip format={(v) => `${usd(v)} / yr`} />} />
         <Bar dataKey="annual" name="Annual cost" fill={color} radius={[0, 4, 4, 0]} maxBarSize={16}>
-          <LabelList dataKey="annual" position="right" formatter={(v: unknown) => (typeof v === "number" ? usd(v) : "")} style={{ fontSize: 11, fill: "#374151" }} />
+          <LabelList dataKey="annual" position="right" formatter={(v: unknown) => (typeof v === "number" ? usd(v) : "")} style={{ fontSize: 11, fill: "var(--chart-label)" }} />
         </Bar>
       </BarChart>
     </Frame>
@@ -106,7 +107,7 @@ export function ForecastWealthChart({ forecast, years }: { forecast: ForecastRes
         <CartesianGrid vertical={false} stroke={GRID} />
         <XAxis dataKey="year" tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} tickFormatter={(v: number) => `Yr ${v}`} minTickGap={24} />
         <YAxis tick={AXIS} tickLine={false} axisLine={false} width={56} tickFormatter={(v: number) => usdCompact(v)} />
-        <ReferenceLine y={0} stroke="#9ca3af" />
+        <ReferenceLine y={0} stroke="var(--chart-axis)" />
         <Tooltip content={<Tip format={(v) => usd(v)} labelPrefix="Year " />} />
         <Legend iconType="plainline" wrapperStyle={{ fontSize: 12 }} />
         <Line type="monotone" dataKey="equity" name="Estimated equity" stroke={SERIES.ltr} strokeWidth={2} dot={false} />
@@ -125,8 +126,8 @@ export function ForecastCashFlowChart({ forecast, years, color }: { forecast: Fo
         <CartesianGrid vertical={false} stroke={GRID} />
         <XAxis dataKey="year" tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} tickFormatter={(v: number) => `Yr ${v}`} minTickGap={24} />
         <YAxis tick={AXIS} tickLine={false} axisLine={false} width={56} tickFormatter={(v: number) => usdCompact(v)} />
-        <ReferenceLine y={0} stroke="#9ca3af" />
-        <Tooltip cursor={{ fill: "#f3f4f6" }} content={<Tip format={(v) => usd(v)} labelPrefix="Year " />} />
+        <ReferenceLine y={0} stroke="var(--chart-axis)" />
+        <Tooltip cursor={{ fill: "var(--chart-cursor)" }} content={<Tip format={(v) => usd(v)} labelPrefix="Year " />} />
         <Bar dataKey="cash_flow" name="Annual cash flow" fill={color} radius={[3, 3, 0, 0]} maxBarSize={22}>
           {rows.map((row) => (
             <Cell key={row.year} fillOpacity={row.cash_flow < 0 ? 0.45 : 1} />
@@ -158,9 +159,9 @@ export function SimpleBarChart({ rows, xKey, dataKey, name, color, format, heigh
         <CartesianGrid vertical={false} stroke={GRID} />
         <XAxis dataKey={xKey} tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} />
         <YAxis tick={AXIS} tickLine={false} axisLine={false} width={52} tickFormatter={(v: number) => format(v)} />
-        <Tooltip cursor={{ fill: "#f3f4f6" }} content={<Tip format={format} />} />
+        <Tooltip cursor={{ fill: "var(--chart-cursor)" }} content={<Tip format={format} />} />
         <Bar dataKey={dataKey} name={name} fill={color} radius={[4, 4, 0, 0]} maxBarSize={44}>
-          <LabelList dataKey={dataKey} position="top" formatter={(v: unknown) => (typeof v === "number" ? format(v) : "")} style={{ fontSize: 10, fill: "#374151" }} />
+          <LabelList dataKey={dataKey} position="top" formatter={(v: unknown) => (typeof v === "number" ? format(v) : "")} style={{ fontSize: 10, fill: "var(--chart-label)" }} />
         </Bar>
       </BarChart>
     </Frame>

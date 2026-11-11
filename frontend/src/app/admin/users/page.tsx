@@ -47,7 +47,7 @@ function AdminStats({ users }: { users: AdminUsers | undefined }) {
         icon={<Database />}
         label="Data source"
         value={status ? (live ? "Live listings" : "Demo dataset") : "—"}
-        tone={live ? "text-positive" : "text-[#5b21b6]"}
+        tone={live ? "text-positive" : "text-demo"}
         sub={live ? "RentCast connected" : "Sample properties — not real listings"}
         href="#data-sources"
       />

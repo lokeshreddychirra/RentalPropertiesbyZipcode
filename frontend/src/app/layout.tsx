@@ -11,11 +11,15 @@ export const metadata: Metadata = {
   description: "Find and analyse residential investment properties by rental yield, cash flow and risk-adjusted return.",
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#ffffff" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#0b0e17" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        {/* Apply the saved theme before first paint (dark is the default). */}
+        <script dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem("theme")==="light")document.documentElement.classList.remove("dark")}catch(e){}` }} />
+      </head>
       <body className="font-sans">
         <Providers>
           <TooltipProvider>

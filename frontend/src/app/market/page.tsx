@@ -166,7 +166,7 @@ function MarketContent() {
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
             Demo markets:
             {status.demo_markets.slice(0, 8).map((m) => (
-              <button key={`${m.city}-${m.state}`} type="button" className="rounded-full border bg-card px-2 py-0.5 hover:text-foreground" onClick={() => { setZips(m.zip_codes); setCity(""); go({ zips: m.zip_codes.replace(/\s/g, "") }); }}>
+              <button key={`${m.city}-${m.state}`} type="button" className="rounded-full border bg-card/60 px-2 py-0.5 hover:text-foreground" onClick={() => { setZips(m.zip_codes); setCity(""); go({ zips: m.zip_codes.replace(/\s/g, "") }); }}>
                 {m.city}, {m.state}
               </button>
             ))}

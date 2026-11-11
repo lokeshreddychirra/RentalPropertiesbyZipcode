@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 export function scoreTone(score: number | null | undefined): { ring: string; text: string; label: string } {
   if (score === null || score === undefined) return { ring: "#cbd2dc", text: "text-muted-foreground", label: "Unranked" };
   if (score >= 70) return { ring: "hsl(152 62% 32%)", text: "text-positive", label: "Strong" };
-  if (score >= 50) return { ring: "#2a78d6", text: "text-[#1d5fb0]", label: "Solid" };
+  if (score >= 50) return { ring: "var(--series-ltr)", text: "text-info", label: "Solid" };
   if (score >= 30) return { ring: "hsl(32 88% 42%)", text: "text-caution", label: "Marginal" };
   return { ring: "hsl(0 66% 48%)", text: "text-negative", label: "Weak" };
 }
@@ -31,7 +31,7 @@ export function ScoreRing({ score, size = 52, className }: { score: number | nul
     >
       <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }} role="img" aria-label={score == null ? "Investment score unavailable" : `Investment score ${score.toFixed(0)} out of 100`}>
         <svg width={size} height={size} className="-rotate-90">
-          <circle cx={size / 2} cy={size / 2} r={radius} fill="white" stroke="#e6e9ee" strokeWidth="5" />
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="hsl(var(--card))" stroke="var(--ring-empty)" strokeWidth="5" />
           <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={tone.ring} strokeWidth="5" strokeLinecap="round" strokeDasharray={`${circumference * fraction} ${circumference}`} />
         </svg>
         <span className={cn("tnum absolute inset-0 flex items-center justify-center font-semibold", tone.text)} style={{ fontSize: size * 0.3 }}>
@@ -64,7 +64,7 @@ const PROVENANCE: Record<Provenance, { label: string; dot: string; help: string 
   verified: { label: "Source", dot: "bg-positive", help: "Reported by the listing or a public record source." },
   estimated: { label: "Estimate", dot: "bg-caution", help: "Provider estimate or calculated from a rate — verify before relying on it." },
   default: { label: "Default", dot: "bg-[#94a3b8]", help: "Standard modelling assumption. Change it to match your situation." },
-  user: { label: "Yours", dot: "bg-[#2a78d6]", help: "Entered by you." },
+  user: { label: "Yours", dot: "bg-primary", help: "Entered by you." },
   unavailable: { label: "Missing", dot: "bg-negative", help: "No data available. A value is assumed or the scenario cannot be calculated." },
 };
 

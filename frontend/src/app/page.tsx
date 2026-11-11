@@ -78,7 +78,7 @@ function Hero({ compact }: { compact: boolean }) {
       {/* Two lines, broken where the thought breaks; on phones the text flows and balances. */}
       <h1 className="heading-4 hero-gradient max-w-[680px] text-balance pb-1 sm:heading-3 lg:heading-4 xl:heading-2">
         Know what a rental earns <br className="hidden sm:block" />
-        before you make an offer
+        <span className="text-brand">before you make an offer</span>
       </h1>
       <p className="body-3 mt-4 max-w-[680px] text-pretty text-muted-foreground">
         Enter a US ZIP code. Every home for sale there is modelled as a long term rental and ranked by cash flow, cap rate and cash on cash return.
@@ -131,7 +131,7 @@ function FaqItem({ question, answer }: { question: string; answer: string }) {
   const [open, setOpen] = React.useState(false);
   const id = React.useId();
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="glass rounded-xl">
       <h3>
         <button
           type="button"
@@ -170,7 +170,7 @@ function QuickStart() {
               <Link
                 key={search.id}
                 href={searchHref(search.filters as SearchFilters)}
-                className="group flex items-center gap-3 rounded-xl border bg-card px-4 py-3 transition-[box-shadow,transform] duration-500 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98]"
+                className="tilt-card glass group flex items-center gap-3 rounded-xl px-4 py-3"
               >
                 <Bookmark className="size-5 shrink-0 text-muted-foreground" aria-hidden />
                 <span className="min-w-0 flex-1">
@@ -191,9 +191,9 @@ function QuickStart() {
             <Link
               key={starter.label}
               href={searchHref(starter.filters, { sort: starter.sort, base: "/" })}
-              className="tilt-card group flex items-center gap-3 rounded-xl border bg-card px-4 py-3"
+              className="tilt-card glass group flex items-center gap-3 rounded-xl px-4 py-3"
             >
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md">
+              <span className="btn-brand flex size-10 shrink-0 items-center justify-center rounded-full">
                 <MapPin className="size-5" aria-hidden />
               </span>
               <span className="min-w-0 flex-1">
@@ -233,9 +233,9 @@ function QuickStart() {
             </div>
             <ol className="grid gap-4 lg:grid-cols-3">
               {STEPS.map(({ icon: Icon, title, body }, i) => (
-                <li key={title} className="tilt-card rounded-xl border bg-card p-6">
+                <li key={title} className="tilt-card glass rounded-2xl p-6">
                   <div className="flex items-center gap-3">
-                    <span className="caption-3 tnum flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground">{i + 1}</span>
+                    <span className="btn-brand caption-3 tnum flex size-8 items-center justify-center rounded-full">{i + 1}</span>
                     <Icon className="size-5 text-muted-foreground" aria-hidden />
                   </div>
                   <h3 className="title-2 mt-4">{title}</h3>
@@ -258,7 +258,7 @@ function QuickStart() {
             </div>
           </Reveal>
 
-          <Reveal className="rounded-2xl border bg-card px-6 py-12 text-center">
+          <Reveal className="glass ring-brand rounded-2xl px-6 py-12 text-center">
             <h2 className="heading-5 mx-auto max-w-[680px] text-balance">Check your first ZIP code free</h2>
             <p className="body-6 mx-auto mt-2 max-w-[680px] text-pretty text-muted-foreground">Create a free account and see every home for sale ranked by cash flow. No card required.</p>
             <div className="mt-6 flex flex-wrap justify-center gap-3">

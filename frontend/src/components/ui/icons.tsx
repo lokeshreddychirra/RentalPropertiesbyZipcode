@@ -69,4 +69,6 @@ export {
   X,
   XCircle,
   Rows,
+  Sun,
+  Moon,
 } from "@phosphor-icons/react/dist/ssr";

@@ -3,34 +3,60 @@
 @tailwind utilities;
 
 @layer base {
+  /* Light theme. Colours are HSL triplets so Tailwind can add opacity (bg-card/70). */
   :root {
-    --background: 210 20% 98%;
-    --foreground: 222 28% 12%;
+    --background: 220 33% 97%;
+    --foreground: 226 32% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222 28% 12%;
+    --card-foreground: 226 32% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 28% 12%;
-    --primary: 222 40% 16%;
+    --popover-foreground: 226 32% 11%;
+    --primary: 243 75% 59%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 214 22% 95%;
-    --secondary-foreground: 222 28% 16%;
-    --muted: 214 22% 95%;
-    --muted-foreground: 218 11% 40%;
-    --accent: 214 26% 93%;
-    --accent-foreground: 222 28% 14%;
-    --destructive: 0 68% 44%;
+    --secondary: 222 30% 94%;
+    --secondary-foreground: 226 32% 14%;
+    --muted: 222 30% 94%;
+    --muted-foreground: 222 12% 40%;
+    --accent: 230 40% 93%;
+    --accent-foreground: 226 32% 12%;
+    --destructive: 0 72% 48%;
     --destructive-foreground: 0 0% 100%;
-    --border: 216 16% 88%;
-    --input: 216 16% 84%;
-    --ring: 215 60% 45%;
+    --border: 224 22% 88%;
+    --input: 224 20% 84%;
+    --ring: 243 75% 59%;
     --font-sans: "Geist Variable", Geist;
 
-    --positive: 152 62% 28%;
-    --positive-soft: 150 52% 94%;
-    --caution: 32 88% 34%;
-    --caution-soft: 42 96% 92%;
-    --negative: 0 66% 44%;
-    --negative-soft: 0 82% 96%;
+    --positive: 158 70% 28%;
+    --positive-soft: 152 60% 93%;
+    --caution: 32 92% 34%;
+    --caution-soft: 42 96% 91%;
+    --negative: 0 70% 46%;
+    --negative-soft: 0 85% 96%;
+    --info-soft: 224 90% 96%;
+    --info: 224 70% 40%;
+    --demo-soft: 258 90% 95%;
+    --demo: 262 70% 42%;
+
+    /* Brand gradient (buttons, active states, glow) */
+    --brand-a: #6366f1;
+    --brand-b: #06b6d4;
+    --glow: 99 102 241;
+
+    /* Glass surfaces */
+    --glass-bg: rgb(255 255 255 / 0.72);
+    --glass-strong: rgb(255 255 255 / 0.88);
+    --glass-border: rgb(15 23 42 / 0.08);
+    --glass-highlight: rgb(255 255 255 / 0.9);
+    --glass-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 8px 24px rgb(15 23 42 / 0.06);
+
+    /* Aurora backdrop */
+    --aurora-1: rgb(99 102 241 / 0.22);
+    --aurora-2: rgb(6 182 212 / 0.18);
+    --aurora-3: rgb(16 185 129 / 0.14);
+    --grid-line: rgb(15 23 42 / 0.045);
+
+    --hero-from: #0b1020;
+    --hero-to: #5b6478;
 
     /* Chart series: categorical, fixed order, validated for colour-vision deficiency */
     --series-ltr: #2a78d6;
@@ -43,6 +69,74 @@
     --series-8: #e34948;
     --chart-grid: #e6e9ee;
     --chart-axis: #6b7280;
+    --chart-label: #374151;
+    --chart-cursor: #f3f4f6;
+    --track: #dde3ea;
+    --ring-empty: #e6e9ee;
+  }
+
+  /* Dark theme (default). */
+  .dark {
+    --background: 228 32% 6%;
+    --foreground: 220 30% 96%;
+    --card: 228 26% 10%;
+    --card-foreground: 220 30% 96%;
+    --popover: 228 26% 11%;
+    --popover-foreground: 220 30% 96%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 228 22% 15%;
+    --secondary-foreground: 220 30% 94%;
+    --muted: 228 22% 14%;
+    --muted-foreground: 222 16% 66%;
+    --accent: 230 24% 18%;
+    --accent-foreground: 220 30% 96%;
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 228 20% 20%;
+    --input: 228 18% 24%;
+    --ring: 239 84% 67%;
+
+    --positive: 156 64% 52%;
+    --positive-soft: 160 50% 14%;
+    --caution: 40 92% 60%;
+    --caution-soft: 38 60% 14%;
+    --negative: 0 84% 68%;
+    --negative-soft: 0 50% 15%;
+    --info-soft: 226 50% 16%;
+    --info: 220 90% 75%;
+    --demo-soft: 262 40% 18%;
+    --demo: 262 90% 80%;
+
+    --brand-a: #818cf8;
+    --brand-b: #22d3ee;
+    --glow: 129 140 248;
+
+    --glass-bg: rgb(18 22 36 / 0.62);
+    --glass-strong: rgb(20 24 40 / 0.86);
+    --glass-border: rgb(255 255 255 / 0.08);
+    --glass-highlight: rgb(255 255 255 / 0.06);
+    --glass-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 12px 32px rgb(0 0 0 / 0.38);
+
+    --aurora-1: rgb(99 102 241 / 0.32);
+    --aurora-2: rgb(6 182 212 / 0.22);
+    --aurora-3: rgb(16 185 129 / 0.16);
+    --grid-line: rgb(255 255 255 / 0.035);
+
+    --hero-from: #ffffff;
+    --hero-to: #9b9b9b;
+
+    --series-ltr: #60a5fa;
+    --series-str: #fb923c;
+    --series-3: #34d399;
+    --series-4: #fbbf24;
+    --chart-grid: rgb(255 255 255 / 0.08);
+    --chart-axis: #9aa3b5;
+    --chart-label: #d6dbe6;
+    --chart-cursor: rgb(255 255 255 / 0.05);
+    --track: rgb(255 255 255 / 0.12);
+    --ring-empty: rgb(255 255 255 / 0.1);
+    color-scheme: dark;
   }
 
   * {
@@ -89,7 +183,7 @@
 
   /* Hero heading: the one gradient, on text only (B5). */
   .hero-gradient {
-    background-image: linear-gradient(to right, #000000, #666666);
+    background-image: linear-gradient(to right, var(--hero-from), var(--hero-to));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -111,6 +205,8 @@
 .maplibregl-popup-content {
   border-radius: 0.75rem;
   padding: 0;
+  background: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground));
   box-shadow: 0 8px 24px rgb(16 24 40 / 0.16);
 }
 
@@ -130,17 +226,17 @@
 .sim-slider::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 9999px;
-  background: linear-gradient(to right, #2a78d6 0, #2a78d6 var(--fill, 0%), #dde3ea var(--fill, 0%), #dde3ea 100%);
+  background: linear-gradient(to right, hsl(var(--primary)) 0, hsl(var(--primary)) var(--fill, 0%), var(--track) var(--fill, 0%), var(--track) 100%);
 }
 .sim-slider::-moz-range-track {
   height: 6px;
   border-radius: 9999px;
-  background: #dde3ea;
+  background: var(--track);
 }
 .sim-slider::-moz-range-progress {
   height: 6px;
   border-radius: 9999px;
-  background: #2a78d6;
+  background: hsl(var(--primary));
 }
 .sim-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -150,7 +246,7 @@
   width: 18px;
   border-radius: 9999px;
   background: #fff;
-  border: 2px solid #2a78d6;
+  border: 2px solid hsl(var(--primary));
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
   transition: transform 120ms ease;
 }
@@ -159,17 +255,17 @@
   width: 14px;
   border-radius: 9999px;
   background: #fff;
-  border: 2px solid #2a78d6;
+  border: 2px solid hsl(var(--primary));
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
 }
 .sim-slider:active::-webkit-slider-thumb {
   transform: scale(1.15);
 }
 .sim-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px rgb(42 120 214 / 0.3);
+  box-shadow: 0 0 0 4px rgb(var(--glow) / 0.35);
 }
 .sim-slider:focus-visible::-moz-range-thumb {
-  box-shadow: 0 0 0 4px rgb(42 120 214 / 0.3);
+  box-shadow: 0 0 0 4px rgb(var(--glow) / 0.35);
 }
 
 /* Scroll reveal (B7): rise 32px and fade in once, on the base curve. */
@@ -225,10 +321,10 @@
 /* Glass cards floating over the 3D hero (glass UI direction). */
 .glass-card {
   border-radius: 0.75rem;
-  border: 1px solid rgb(255 255 255 / 0.7);
-  background: rgb(255 255 255 / 0.72);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-strong);
   padding: 0.5rem 0.75rem;
-  box-shadow: 0 12px 32px rgb(16 24 40 / 0.14), 0 2px 6px rgb(16 24 40 / 0.06);
+  box-shadow: 0 1px 0 var(--glass-highlight) inset, 0 16px 40px rgb(0 0 0 / 0.22);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   transform-style: preserve-3d;
@@ -248,7 +344,7 @@
 }
 .tilt-card:hover {
   transform: perspective(900px) rotateX(6deg) translateY(-4px);
-  box-shadow: 0 18px 36px rgb(16 24 40 / 0.12), 0 4px 10px rgb(16 24 40 / 0.06);
+  box-shadow: 0 20px 40px -12px rgb(var(--glow) / 0.35), 0 4px 10px rgb(0 0 0 / 0.08);
 }
 .tilt-card:active {
   transform: perspective(900px) rotateX(2deg) scale(0.98);
@@ -258,7 +354,7 @@
 .depth-tile {
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 6px 14px rgb(16 24 40 / 0.1), 0 1px 2px rgb(16 24 40 / 0.08);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 8px 20px -6px rgb(var(--glow) / 0.45), 0 1px 2px rgb(0 0 0 / 0.08);
   color: hsl(var(--primary));
 }
 
@@ -266,3 +362,140 @@
   .float-a, .float-b, .float-c { animation: none; transform: none; }
   .tilt-card, .tilt-card:hover, .tilt-card:active { transform: none; }
 }
+
+/* ---------------------------------------------------------------- advanced GUI layer */
+
+/* Frosted glass surface used by cards, the sidebar, the header and overlays. */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+.glass-strong {
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+}
+
+/* Aurora backdrop: soft colour fields that drift slowly behind the whole app, over a faint grid. */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: hsl(var(--background));
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+.aurora::after {
+  /* fade the grid out toward the bottom */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 0%, hsl(var(--background)) 85%);
+}
+.aurora span {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  will-change: transform;
+}
+.aurora span:nth-child(1) { width: 46vw; height: 46vw; left: -8vw; top: -16vw; background: var(--aurora-1); animation: aurora-a 26s cubic-bezier(0.22, 1, 0.36, 1) infinite alternate; }
+.aurora span:nth-child(2) { width: 38vw; height: 38vw; right: -10vw; top: -6vw; background: var(--aurora-2); animation: aurora-b 32s cubic-bezier(0.22, 1, 0.36, 1) infinite alternate; }
+.aurora span:nth-child(3) { width: 34vw; height: 34vw; left: 30vw; top: 30vh; background: var(--aurora-3); animation: aurora-c 38s cubic-bezier(0.22, 1, 0.36, 1) infinite alternate; }
+@keyframes aurora-a { to { transform: translate3d(12vw, 8vh, 0) scale(1.15); } }
+@keyframes aurora-b { to { transform: translate3d(-10vw, 12vh, 0) scale(0.9); } }
+@keyframes aurora-c { to { transform: translate3d(-8vw, -10vh, 0) scale(1.2); } }
+
+/* Brand button: gradient face, glow, lifts on hover. */
+.btn-brand {
+  color: #fff;
+  background-image: linear-gradient(135deg, var(--brand-a), var(--brand-b));
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.25) inset, 0 8px 24px -8px rgb(var(--glow) / 0.8);
+}
+.btn-brand:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.25) inset, 0 12px 30px -8px rgb(var(--glow) / 0.95);
+  transform: translateY(-1px);
+}
+
+/* Gradient text for page titles and accents. */
+.text-gradient,
+main h1:not(.hero-gradient):not(.plain) {
+  background-image: linear-gradient(90deg, hsl(var(--foreground)), hsl(var(--foreground) / 0.7));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-brand {
+  background-image: linear-gradient(90deg, var(--brand-a), var(--brand-b));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Gradient hairline border for featured cards. */
+.ring-brand {
+  position: relative;
+}
+.ring-brand::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--brand-a), var(--brand-b));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Every page eases in on navigation. */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.page-enter {
+  animation: page-in 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Pointer-follow 3D tilt (set by TiltCard via --rx / --ry). */
+.tilt-3d {
+  transform: perspective(1000px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(var(--lift, 0));
+  transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-style: preserve-3d;
+}
+.tilt-3d:hover {
+  --lift: -4px;
+  box-shadow: 0 24px 48px -16px rgb(var(--glow) / 0.4), var(--glass-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora span { animation: none; }
+  .page-enter { animation: none; }
+  .tilt-3d, .tilt-3d:hover { transform: none; }
+  .btn-brand:hover { transform: none; }
+}
+
+.maplibregl-popup-tip, .mapboxgl-popup-tip { border-top-color: hsl(var(--popover)) !important; border-bottom-color: hsl(var(--popover)) !important; }
+
+/* Property illustrations: dusk palette in the dark theme. */
+.illustration .ill-night { opacity: 0; transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1); }
+.dark .illustration .ill-night { opacity: 0.82; }
+.dark .illustration .ill-sun { fill: #f5f1de; opacity: 0.95; }
+.dark .illustration .ill-ground { filter: brightness(0.42) saturate(1.1); }
+.dark .illustration .ill-window { fill: #ffd27a; filter: drop-shadow(0 0 4px rgb(255 200 110 / 0.8)); }
+.dark .illustration { filter: saturate(0.95); }
+
+/* Dark basemap: invert the raster tiles in the dark theme. Markers are HTML and keep their colours. */
+.dark .maplibregl-canvas,
+.dark .mapboxgl-canvas {
+  filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.8);
+}
+.dark .illustration .ill-tree { filter: brightness(0.5); }
