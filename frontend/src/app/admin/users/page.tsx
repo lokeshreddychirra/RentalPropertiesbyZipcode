@@ -3,14 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Database, DollarSign, Gauge, Lock, Search, Users } from "lucide-react";
+import { Activity, Database, DollarSign, Gauge, Lock, Search, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton, Table, Td, Th } from "@/components/ui/card";
 import { Field, Input, NumberInput, Select } from "@/components/ui/form";
 import { api, errorMessage } from "@/lib/api";
 import { useSession, useStatus } from "@/lib/store";
-import type { AdminUser, PlanInfo } from "@/lib/types";
+import type { AdminUser, AdminUsers, PlanInfo } from "@/lib/types";
 import { cn, relativeTime, shortDate } from "@/lib/utils";
 
 function Stat({ icon, label, value, sub, href, tone }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub: React.ReactNode; href?: string; tone?: string }) {
@@ -34,14 +34,14 @@ function Stat({ icon, label, value, sub, href, tone }: { icon: React.ReactNode; 
 }
 
 /** Site overview for the administrator: data source, RentCast usage, accounts and revenue. */
-function AdminStats({ users }: { users: { total: number; by_plan: Record<string, number>; monthly_revenue_usd: number } | undefined }) {
+function AdminStats({ users }: { users: AdminUsers | undefined }) {
   const { data: status } = useStatus();
   const usage = useQuery({ queryKey: ["usage"], queryFn: api.usage, staleTime: 60_000 });
   const rentcast = usage.data?.providers.find((p) => p.key === "rentcast");
   const live = status?.data_mode === "live";
   const paid = users ? (users.by_plan.pro ?? 0) + (users.by_plan.premium ?? 0) : 0;
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
       <Stat
         icon={<Database />}
         label="Data source"
@@ -58,13 +58,109 @@ function AdminStats({ users }: { users: { total: number; by_plan: Record<string,
         sub={rentcast ? `Est. $${rentcast.estimated_cost_this_month_usd.toFixed(2)} · change the limit in Settings` : "Loading…"}
         href="/settings#usage"
       />
-      <Stat icon={<Users />} label="Accounts" value={users ? users.total.toLocaleString() : "—"} sub={users ? `${paid} paying · ${users.by_plan.free ?? 0} free` : "Loading…"} />
+      <Stat
+        icon={<Users />}
+        label="Accounts"
+        value={users ? users.total.toLocaleString() : "—"}
+        sub={users ? `${paid} paying · ${users.by_plan.free ?? 0} free · ${users.new_users_this_month} new this month` : "Loading…"}
+      />
+      <Stat
+        icon={<Activity />}
+        label="Searches this month"
+        value={users ? users.zip_searches_this_month.toLocaleString() : "—"}
+        sub={users ? `${users.property_reports_this_month} property reports · ${users.active_users_this_month} active users` : "Loading…"}
+      />
       <Stat
         icon={<DollarSign />}
         label="Monthly revenue (list price)"
         value={users ? `$${Number(users.monthly_revenue_usd).toFixed(0)}` : "—"}
         sub={users ? `${users.by_plan.pro ?? 0} Pro · ${users.by_plan.premium ?? 0} Premium` : "Loading…"}
       />
+    </div>
+  );
+}
+
+const PLAN_TONE: Record<string, string> = { free: "bg-muted-foreground/40", pro: "bg-primary", premium: "bg-positive" };
+
+/** Users, usage and revenue per plan, plus the most active users. */
+function PlanBreakdown({ data }: { data: AdminUsers }) {
+  const total = Math.max(data.total, 1);
+  const top = [...data.users].filter((u) => u.zip_searches_used > 0).sort((a, b) => b.zip_searches_used - a.zip_searches_used || b.property_reports_used - a.property_reports_used).slice(0, 5);
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      <Card>
+        <CardHeader>
+          <CardTitle>Users by plan</CardTitle>
+          <CardDescription>ZIP searches and reports count each plan&apos;s own allowance period — lifetime for Free, this month for Pro and Premium.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex h-3 overflow-hidden rounded-full bg-muted" aria-hidden>
+            {data.plan_summary.map((row) => (
+              <div key={row.plan} className={PLAN_TONE[row.plan] ?? "bg-primary"} style={{ width: `${(row.users / total) * 100}%` }} />
+            ))}
+          </div>
+          <div className="overflow-x-auto">
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Plan</Th>
+                  <Th className="text-right">Users</Th>
+                  <Th className="text-right">Share</Th>
+                  <Th className="text-right">ZIP searches</Th>
+                  <Th className="text-right">Avg / user</Th>
+                  <Th className="text-right">Reports</Th>
+                  <Th className="text-right">Revenue / mo</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.plan_summary.map((row) => (
+                  <tr key={row.plan}>
+                    <Td className="font-medium">
+                      <span className="inline-flex items-center gap-2">
+                        <span className={cn("size-2.5 rounded-full", PLAN_TONE[row.plan] ?? "bg-primary")} aria-hidden />
+                        {row.name}
+                      </span>
+                    </Td>
+                    <Td className="tnum text-right">{row.users}</Td>
+                    <Td className="tnum text-right">{Math.round((row.users / total) * 100)}%</Td>
+                    <Td className="tnum text-right">{row.zip_searches}</Td>
+                    <Td className="tnum text-right">{row.users ? (row.zip_searches / row.users).toFixed(1) : "—"}</Td>
+                    <Td className="tnum text-right">{row.property_reports}</Td>
+                    <Td className="tnum text-right">${Number(row.revenue_usd).toFixed(0)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Most active users</CardTitle>
+          <CardDescription>By ZIP codes searched in their current period.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {top.length ? (
+            <ol className="space-y-2.5">
+              {top.map((u, i) => (
+                <li key={u.id} className="flex items-center gap-3 text-sm">
+                  <span className="tnum w-4 text-xs text-muted-foreground">{i + 1}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{u.email}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">{u.searched_zips.join(", ")}</span>
+                  </span>
+                  <Badge tone="outline" className="capitalize">{u.plan}</Badge>
+                  <span className="tnum w-14 text-right text-xs">
+                    {u.zip_searches_used} ZIP{u.zip_searches_used === 1 ? "" : "s"}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="py-6 text-center text-sm text-muted-foreground">No searches yet.</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -201,6 +297,8 @@ export default function AdminUsersPage() {
   const isAdmin = user?.role === "admin";
   const [query, setQuery] = React.useState("");
   const [search, setSearch] = React.useState("");
+  const [planFilter, setPlanFilter] = React.useState("all");
+  const [sortBy, setSortBy] = React.useState<"joined" | "searches" | "last_login">("joined");
   const plansQuery = useQuery({ queryKey: ["admin-plans"], queryFn: api.adminPlans, enabled: isAdmin });
   const usersQuery = useQuery({ queryKey: ["admin-users", search], queryFn: () => api.adminUsers(search), enabled: isAdmin });
 
@@ -216,6 +314,15 @@ export default function AdminUsersPage() {
   }
 
   const data = usersQuery.data;
+  const visibleUsers = (data?.users ?? [])
+    .filter((u) => planFilter === "all" || u.plan === planFilter)
+    .sort((a, b) =>
+      sortBy === "searches"
+        ? b.zip_searches_used - a.zip_searches_used
+        : sortBy === "last_login"
+          ? (b.last_login_at ?? "").localeCompare(a.last_login_at ?? "")
+          : b.created_at.localeCompare(a.created_at),
+    );
   return (
     <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 lg:px-6">
       <div>
@@ -224,6 +331,7 @@ export default function AdminUsersPage() {
       </div>
 
       <AdminStats users={data} />
+      {data ? <PlanBreakdown data={data} /> : null}
 
       <Card>
         <CardHeader>
@@ -258,7 +366,7 @@ export default function AdminUsersPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <form
-            className="flex max-w-md gap-2"
+            className="flex flex-wrap gap-2 [&>input]:max-w-xs"
             onSubmit={(event) => {
               event.preventDefault();
               setSearch(query.trim());
@@ -268,10 +376,21 @@ export default function AdminUsersPage() {
             <Button type="submit" variant="outline">
               <Search /> Search
             </Button>
+            <Select aria-label="Filter by plan" value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} className="w-32">
+              <option value="all">All plans</option>
+              <option value="free">Free</option>
+              <option value="pro">Pro</option>
+              <option value="premium">Premium</option>
+            </Select>
+            <Select aria-label="Sort users" value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className="w-40">
+              <option value="joined">Newest first</option>
+              <option value="searches">Most searches</option>
+              <option value="last_login">Last sign-in</option>
+            </Select>
           </form>
           {usersQuery.isLoading ? (
             <Skeleton className="h-64 w-full" />
-          ) : data?.users.length ? (
+          ) : visibleUsers.length ? (
             <div className="overflow-x-auto rounded-lg border">
               <Table>
                 <thead>
@@ -289,7 +408,7 @@ export default function AdminUsersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.users.map((row) => (
+                  {visibleUsers.map((row) => (
                     <UserRow key={row.id} user={row} me={user?.id} />
                   ))}
                 </tbody>

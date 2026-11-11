@@ -18,6 +18,8 @@ export interface FilterForm {
   propertyTypes: string[];
   maxHoa: number | null;
   maxDom: number | null;
+  minYear: number | null;
+  maxYear: number | null;
   strategy: StrategyFilter;
   polygon: [number, number][] | null;
 }
@@ -38,6 +40,8 @@ export const EMPTY_FORM: FilterForm = {
   propertyTypes: [],
   maxHoa: null,
   maxDom: null,
+  minYear: null,
+  maxYear: null,
   strategy: "both",
   polygon: null,
 };
@@ -141,6 +145,8 @@ export function formToFilters(form: FilterForm): SearchFilters {
     ["max_beds", form.maxBeds],
     ["max_hoa", form.maxHoa],
     ["max_days_on_market", form.maxDom],
+    ["min_year_built", form.minYear],
+    ["max_year_built", form.maxYear],
   ];
   for (const [key, value] of numeric) {
     if (value !== null && value !== undefined) (filters as Record<string, unknown>)[key] = value;
@@ -169,6 +175,8 @@ export function filtersToForm(filters: Partial<SearchFilters> | null | undefined
     propertyTypes: (filters.property_types ?? []) as string[],
     maxHoa: n(filters.max_hoa),
     maxDom: n(filters.max_days_on_market),
+    minYear: n(filters.min_year_built),
+    maxYear: n(filters.max_year_built),
     strategy: (filters.strategy as StrategyFilter) ?? "both",
     polygon: (filters.polygon as [number, number][] | null | undefined) ?? null,
   };

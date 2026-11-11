@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { MapPin, Search, SlidersHorizontal, X } from "lucide-react";
+import { ChevronDown, MapPin, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Alert, Badge, Card } from "@/components/ui/card";
+import { Alert, Card } from "@/components/ui/card";
 import { Field, Input, NumberInput, Select } from "@/components/ui/form";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
 import { EMPTY_FORM, filtersToForm, formToFilters, parseZips, type FilterForm } from "@/lib/filters";
 import { useAccount, useStatus } from "@/lib/store";
 import type { SearchFilters, StrategyFilter } from "@/lib/types";
@@ -18,11 +19,72 @@ const PROPERTY_TYPES: { value: string; label: string }[] = [
   { value: "manufactured", label: "Manufactured" },
 ];
 
-const STRATEGIES: [StrategyFilter, string][] = [
-  ["both", "Both strategies"],
-  ["ltr", "Long-term rental"],
-  ["str", "Short-term rental"],
+const STRATEGIES: { value: StrategyFilter; label: string; short: string }[] = [
+  { value: "both", label: "Both strategies", short: "Both strategies" },
+  { value: "ltr", label: "Long-term rental", short: "Long-term" },
+  { value: "str", label: "Short-term rental", short: "Short-term" },
 ];
+
+const money = (v: number) => (v >= 1_000_000 ? `$${+(v / 1_000_000).toFixed(2)}M` : v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`);
+
+function rangeLabel(min: number | null, max: number | null, fmt: (v: number) => string, prefix = ""): string | null {
+  if (min != null && max != null) return `${prefix}${fmt(min)}–${fmt(max)}`;
+  if (min != null) return `${prefix}${fmt(min)}+`;
+  if (max != null) return `${prefix}up to ${fmt(max)}`;
+  return null;
+}
+
+interface FilterButtonProps {
+  label: string;
+  /** Summary of the active value; when set the button is highlighted. */
+  active: string | null;
+  onApply: () => void;
+  onClear: () => void;
+  width?: string;
+  children: React.ReactNode;
+}
+
+/** A compact filter chip that opens a small panel. "Apply" runs the search; "Clear" resets this filter. */
+function FilterButton({ label, active, onApply, onClear, width, children }: FilterButtonProps) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex h-8 items-center gap-1 rounded-full border px-3 text-xs font-medium transition-colors",
+            active ? "border-primary bg-primary text-primary-foreground" : "bg-card text-foreground hover:border-foreground/30",
+          )}
+        >
+          {active ?? label}
+          <ChevronDown className="size-3.5 opacity-70" aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className={width}>
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+          {children}
+          <div className="flex justify-between gap-2 pt-1">
+            <Button type="button" variant="ghost" size="sm" onClick={onClear} disabled={!active}>
+              Clear
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setOpen(false);
+                onApply();
+              }}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 interface PanelProps {
   initial: SearchFilters | null;
@@ -31,23 +93,15 @@ interface PanelProps {
   busy?: boolean;
 }
 
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">{children}</div>
-    </div>
-  );
-}
-
 export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
   const [form, setForm] = React.useState<FilterForm>(() => filtersToForm(initial));
-  const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const { data: status } = useStatus();
   const { data: account } = useAccount();
   const maxZips = account?.zips_per_search ?? 1;
   const initialKey = JSON.stringify(initial ?? null);
+  const formRef = React.useRef(form);
+  formRef.current = form;
 
   React.useEffect(() => {
     setForm(filtersToForm(initial));
@@ -56,193 +110,233 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
   }, [initialKey]);
 
   const set = <K extends keyof FilterForm>(key: K, value: FilterForm[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const extraCount = [
-    form.minPrice,
-    form.maxBeds,
-    form.maxHoa,
-    form.maxDom,
-    form.minGrossYield,
-    form.minNetYield,
-    form.minCapRate,
-    form.minCashOnCash,
-    form.minCashFlow,
-    form.propertyTypes.length || null,
-  ].filter((v) => v !== null && v !== undefined).length;
   const dirty = JSON.stringify(form) !== JSON.stringify(EMPTY_FORM);
 
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
-    const parsed = parseZips(form.location);
-    if (parsed.error) {
-      setError(parsed.error);
-      return;
-    }
+  /** Validate and run the search with the given form (defaults to the current one). */
+  const run = (next: FilterForm = formRef.current, quiet = false) => {
+    const parsed = parseZips(next.location);
+    if (parsed.error) return setError(parsed.error);
     if (!parsed.zip_codes.length) {
-      setError("Enter a 5-digit ZIP code — for example 38116.");
+      if (!quiet) setError("Enter a 5-digit ZIP code — for example 38116.");
       return;
     }
     if (parsed.zip_codes.length > maxZips) {
-      setError(maxZips === 1 ? "Your plan searches one ZIP code at a time. Premium searches several at once." : `Your plan searches up to ${maxZips} ZIP codes at a time.`);
-      return;
+      return setError(maxZips === 1 ? "Your plan searches one ZIP code at a time. Premium searches several at once." : `Your plan searches up to ${maxZips} ZIP codes at a time.`);
     }
-    const filters = formToFilters(form);
-    if (form.minPrice !== null && form.maxPrice !== null && form.minPrice > form.maxPrice) {
-      setError("Minimum price is higher than maximum price.");
-      return;
-    }
+    if (next.minPrice != null && next.maxPrice != null && next.minPrice > next.maxPrice) return setError("Minimum price is higher than maximum price.");
+    if (next.minYear != null && next.maxYear != null && next.minYear > next.maxYear) return setError("“Built from” is later than “built to”.");
     setError(null);
-    onSearch(filters);
+    onSearch(formToFilters(next));
+  };
+  // Filter panels apply as soon as there is a ZIP code; without one they just remember the choice.
+  const apply = (values?: Partial<FilterForm>) => {
+    const next = values ? { ...formRef.current, ...values } : formRef.current;
+    if (values) setForm(next);
+    run(next, true);
   };
 
+  const returnsCount = [form.minGrossYield, form.minCashFlow, form.minCashOnCash, form.minCapRate, form.minNetYield].filter((v) => v != null).length;
+  const moreCount = [form.maxHoa, form.maxDom].filter((v) => v != null).length;
+  const types = form.propertyTypes;
+  const strategy = STRATEGIES.find((s) => s.value === form.strategy) ?? STRATEGIES[0];
+
   return (
-    <Card className="overflow-hidden">
-      <form onSubmit={submit} aria-label="Property search">
-        <div className="flex flex-col gap-3 p-4 sm:p-5 lg:flex-row lg:items-end">
-          <Field label={maxZips > 1 ? `ZIP codes (up to ${maxZips})` : "ZIP code"} htmlFor="f-location" className="min-w-0 flex-1">
-            <div className="relative">
-              <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-              <Input
-                id="f-location"
-                placeholder={maxZips > 1 ? "e.g. 38116, 38118" : "e.g. 38116"}
-                inputMode="numeric"
-                value={form.location}
-                onChange={(e) => set("location", e.target.value)}
-                autoComplete="off"
-                className="h-11 pl-9 text-[15px]"
-              />
-            </div>
-          </Field>
-          <div className="grid grid-cols-2 gap-3 lg:flex">
-            <Field label="Max price" htmlFor="f-max-price" className="lg:w-40">
-              <NumberInput id="f-max-price" prefix="$" placeholder="No max" value={form.maxPrice} onValueChange={(v) => set("maxPrice", v)} min={0} className="h-11" />
-            </Field>
-            <Field label="Bedrooms" htmlFor="f-min-beds" className="lg:w-32">
-              <Select id="f-min-beds" value={form.minBeds ?? ""} onChange={(e) => set("minBeds", e.target.value === "" ? null : Number(e.target.value))} className="h-11">
-                <option value="">Any</option>
-                {[1, 2, 3, 4, 5].map((beds) => (
-                  <option key={beds} value={beds}>
-                    {beds}+
-                  </option>
-                ))}
-              </Select>
-            </Field>
+    <Card>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          run();
+        }}
+        aria-label="Property search"
+        className="space-y-3 p-3 sm:p-4"
+      >
+        <div className="flex gap-2">
+          <div className="relative min-w-0 flex-1">
+            <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <Input
+              id="f-location"
+              aria-label="ZIP code"
+              placeholder={maxZips > 1 ? "ZIP code — e.g. 38116 (separate several with commas)" : "ZIP code — e.g. 38116"}
+              inputMode="numeric"
+              value={form.location}
+              onChange={(e) => set("location", e.target.value)}
+              autoComplete="postal-code"
+              className="h-11 pl-9 text-[15px]"
+            />
           </div>
-          <Button type="submit" size="lg" disabled={busy} className="h-11 lg:w-36">
-            <Search /> {busy ? "Searching…" : "Search"}
+          <Button type="submit" size="lg" disabled={busy} className="h-11 px-5">
+            <Search /> <span className="hidden sm:inline">{busy ? "Searching…" : "Search"}</span>
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5 sm:px-5">
-          <div className="inline-flex rounded-lg bg-muted p-0.5" role="radiogroup" aria-label="Rental strategy">
-            {STRATEGIES.map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={form.strategy === value}
-                onClick={() => set("strategy", value)}
-                className={cn(
-                  "rounded-md px-3 py-1 text-xs font-medium transition-colors sm:text-sm",
-                  form.strategy === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls="search-filters">
-            <SlidersHorizontal /> Filters
-            {extraCount > 0 ? <Badge tone="solid">{extraCount}</Badge> : null}
-          </Button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <FilterButton
+            label="Strategy"
+            active={form.strategy !== "both" ? strategy.short : null}
+            onApply={() => apply()}
+            onClear={() => apply({ strategy: "both" })}
+            width="w-60"
+          >
+            <div className="space-y-1" role="radiogroup" aria-label="Rental strategy">
+              {STRATEGIES.map((option) => (
+                <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted">
+                  <input type="radio" name="strategy" checked={form.strategy === option.value} onChange={() => set("strategy", option.value)} className="accent-[hsl(var(--primary))]" />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+          </FilterButton>
+
+          <FilterButton
+            label="Price"
+            active={rangeLabel(form.minPrice, form.maxPrice, money)}
+            onApply={() => apply()}
+            onClear={() => apply({ minPrice: null, maxPrice: null })}
+          >
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Min" htmlFor="f-min-price">
+                <NumberInput id="f-min-price" prefix="$" placeholder="No min" value={form.minPrice} onValueChange={(v) => set("minPrice", v)} min={0} />
+              </Field>
+              <Field label="Max" htmlFor="f-max-price">
+                <NumberInput id="f-max-price" prefix="$" placeholder="No max" value={form.maxPrice} onValueChange={(v) => set("maxPrice", v)} min={0} />
+              </Field>
+            </div>
+          </FilterButton>
+
+          <FilterButton
+            label="Beds"
+            active={rangeLabel(form.minBeds, form.maxBeds, String)?.concat(" beds") ?? null}
+            onApply={() => apply()}
+            onClear={() => apply({ minBeds: null, maxBeds: null })}
+          >
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Min" htmlFor="f-min-beds">
+                <Select id="f-min-beds" value={form.minBeds ?? ""} onChange={(e) => set("minBeds", e.target.value === "" ? null : Number(e.target.value))}>
+                  <option value="">Any</option>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Max" htmlFor="f-max-beds">
+                <Select id="f-max-beds" value={form.maxBeds ?? ""} onChange={(e) => set("maxBeds", e.target.value === "" ? null : Number(e.target.value))}>
+                  <option value="">Any</option>
+                  {[1, 2, 3, 4, 5, 6].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          </FilterButton>
+
+          <FilterButton
+            label="Home type"
+            active={types.length ? (types.length === 1 ? PROPERTY_TYPES.find((t) => t.value === types[0])?.label ?? "1 type" : `${types.length} types`) : null}
+            onApply={() => apply()}
+            onClear={() => apply({ propertyTypes: [] })}
+            width="w-60"
+          >
+            <div className="space-y-1">
+              {PROPERTY_TYPES.map(({ value, label }) => (
+                <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted">
+                  <input
+                    type="checkbox"
+                    checked={types.includes(value)}
+                    onChange={() => set("propertyTypes", types.includes(value) ? types.filter((t) => t !== value) : [...types, value])}
+                    className="accent-[hsl(var(--primary))]"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </FilterButton>
+
+          <FilterButton
+            label="Year built"
+            active={rangeLabel(form.minYear, form.maxYear, String, "Built ")}
+            onApply={() => apply()}
+            onClear={() => apply({ minYear: null, maxYear: null })}
+          >
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="From" htmlFor="f-min-year">
+                <NumberInput id="f-min-year" placeholder="Any" value={form.minYear} onValueChange={(v) => set("minYear", v === null ? null : Math.round(v))} min={1700} max={2100} />
+              </Field>
+              <Field label="To" htmlFor="f-max-year">
+                <NumberInput id="f-max-year" placeholder="Any" value={form.maxYear} onValueChange={(v) => set("maxYear", v === null ? null : Math.round(v))} min={1700} max={2100} />
+              </Field>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Homes with no recorded build year are hidden while this filter is on.</p>
+          </FilterButton>
+
+          <FilterButton
+            label="Returns"
+            active={returnsCount ? `Returns · ${returnsCount}` : null}
+            onApply={() => apply()}
+            onClear={() => apply({ minGrossYield: null, minCashFlow: null, minCashOnCash: null, minCapRate: null, minNetYield: null })}
+            width="w-80"
+          >
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Min gross yield" htmlFor="f-gross">
+                <NumberInput id="f-gross" suffix="%" placeholder="Any" value={form.minGrossYield} onValueChange={(v) => set("minGrossYield", v)} />
+              </Field>
+              <Field label="Min cash flow / mo" htmlFor="f-cf">
+                <NumberInput id="f-cf" prefix="$" placeholder="Any" value={form.minCashFlow} onValueChange={(v) => set("minCashFlow", v)} />
+              </Field>
+              <Field label="Min cash-on-cash" htmlFor="f-coc">
+                <NumberInput id="f-coc" suffix="%" placeholder="Any" value={form.minCashOnCash} onValueChange={(v) => set("minCashOnCash", v)} />
+              </Field>
+              <Field label="Min cap rate" htmlFor="f-cap">
+                <NumberInput id="f-cap" suffix="%" placeholder="Any" value={form.minCapRate} onValueChange={(v) => set("minCapRate", v)} />
+              </Field>
+              <Field label="Min net yield" htmlFor="f-net">
+                <NumberInput id="f-net" suffix="%" placeholder="Any" value={form.minNetYield} onValueChange={(v) => set("minNetYield", v)} />
+              </Field>
+            </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">Calculated with 25% down at 7% (default financing) on each property’s recommended strategy.</p>
+          </FilterButton>
+
+          <FilterButton
+            label="More"
+            active={moreCount ? `More · ${moreCount}` : null}
+            onApply={() => apply()}
+            onClear={() => apply({ maxHoa: null, maxDom: null })}
+          >
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Max HOA / mo" htmlFor="f-hoa">
+                <NumberInput id="f-hoa" prefix="$" placeholder="Any" value={form.maxHoa} onValueChange={(v) => set("maxHoa", v)} min={0} />
+              </Field>
+              <Field label="Max days listed" htmlFor="f-dom">
+                <NumberInput id="f-dom" placeholder="Any" value={form.maxDom} onValueChange={(v) => set("maxDom", v === null ? null : Math.round(v))} min={0} />
+              </Field>
+            </div>
+          </FilterButton>
+
           {dirty ? (
-            <Button
+            <button
               type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground"
+              className="inline-flex h-8 items-center gap-1 rounded-full px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
               onClick={() => {
                 setForm({ ...EMPTY_FORM });
                 setError(null);
                 onReset();
               }}
             >
-              <X /> Clear
-            </Button>
+              <X className="size-3.5" aria-hidden /> Clear all
+            </button>
           ) : null}
+
           {status?.data_mode === "demo" ? (
-            <span className="ml-auto hidden text-[11px] text-muted-foreground md:inline">
-              Demo markets: {status.demo_markets.slice(0, 5).map((m) => `${m.city}, ${m.state}`).join(" · ")}
-              {status.demo_markets.length > 5 ? ` · +${status.demo_markets.length - 5} more` : ""}
+            <span className="ml-auto hidden text-[11px] text-muted-foreground lg:inline">
+              Demo ZIPs: {status.demo_markets.slice(0, 4).map((m) => `${m.zip_codes.split(",")[0]} ${m.city}`).join(" · ")}
             </span>
           ) : null}
         </div>
 
-        {open ? (
-          <div id="search-filters" className="space-y-5 border-t p-4 sm:p-5">
-            <Group title="Property">
-              <Field label="Min price" htmlFor="f-min-price">
-                <NumberInput id="f-min-price" prefix="$" placeholder="No min" value={form.minPrice} onValueChange={(v) => set("minPrice", v)} min={0} />
-              </Field>
-              <Field label="Max bedrooms" htmlFor="f-max-beds">
-                <NumberInput id="f-max-beds" placeholder="Any" value={form.maxBeds} onValueChange={(v) => set("maxBeds", v === null ? null : Math.round(v))} min={0} />
-              </Field>
-              <Field label="Max HOA / month" htmlFor="f-hoa">
-                <NumberInput id="f-hoa" prefix="$" placeholder="Any" value={form.maxHoa} onValueChange={(v) => set("maxHoa", v)} min={0} />
-              </Field>
-              <Field label="Max days on market" htmlFor="f-dom">
-                <NumberInput id="f-dom" placeholder="Any" value={form.maxDom} onValueChange={(v) => set("maxDom", v === null ? null : Math.round(v))} min={0} />
-              </Field>
-              <fieldset className="col-span-2 sm:col-span-3 lg:col-span-5">
-                <legend className="mb-1.5 text-xs font-medium text-muted-foreground">Property type</legend>
-                <div className="flex flex-wrap gap-1.5">
-                  {PROPERTY_TYPES.map(({ value, label }) => {
-                    const on = form.propertyTypes.includes(value);
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => set("propertyTypes", on ? form.propertyTypes.filter((t) => t !== value) : [...form.propertyTypes, value])}
-                        className={cn(
-                          "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                          on ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </fieldset>
-            </Group>
-            <Group title="Minimum returns">
-              <Field label="Gross yield" htmlFor="f-gross">
-                <NumberInput id="f-gross" suffix="%" placeholder="Any" value={form.minGrossYield} onValueChange={(v) => set("minGrossYield", v)} />
-              </Field>
-              <Field label="Cash flow / month" htmlFor="f-cf">
-                <NumberInput id="f-cf" prefix="$" placeholder="Any" value={form.minCashFlow} onValueChange={(v) => set("minCashFlow", v)} />
-              </Field>
-              <Field label="Cash-on-cash" htmlFor="f-coc">
-                <NumberInput id="f-coc" suffix="%" placeholder="Any" value={form.minCashOnCash} onValueChange={(v) => set("minCashOnCash", v)} />
-              </Field>
-              <Field label="Cap rate" htmlFor="f-cap">
-                <NumberInput id="f-cap" suffix="%" placeholder="Any" value={form.minCapRate} onValueChange={(v) => set("minCapRate", v)} />
-              </Field>
-              <Field label="Net yield" htmlFor="f-net">
-                <NumberInput id="f-net" suffix="%" placeholder="Any" value={form.minNetYield} onValueChange={(v) => set("minNetYield", v)} />
-              </Field>
-            </Group>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Return filters are calculated with the financing assumptions (25% down at 7% by default) for each property’s recommended strategy.
-            </p>
-          </div>
-        ) : null}
-
-        {error ? (
-          <div className="border-t px-4 py-3 sm:px-5">
-            <Alert tone="error">{error}</Alert>
-          </div>
-        ) : null}
+        {error ? <Alert tone="error">{error}</Alert> : null}
       </form>
     </Card>
   );

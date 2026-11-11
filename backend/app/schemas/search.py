@@ -65,6 +65,8 @@ class SearchFilters(BaseModel):
     property_types: list[PropertyType] = Field(default_factory=list)
     max_hoa: Price | None = None
     max_days_on_market: Annotated[int, Field(ge=0, le=3650)] | None = None
+    min_year_built: Annotated[int, Field(ge=1700, le=2100)] | None = None
+    max_year_built: Annotated[int, Field(ge=1700, le=2100)] | None = None
     strategy: Literal["ltr", "str", "both"] = "both"
 
     @field_validator("zip_codes", mode="before")
@@ -135,6 +137,8 @@ class SearchFilters(BaseModel):
             raise ValueError("min_price cannot be greater than max_price")
         if self.min_beds is not None and self.max_beds is not None and self.min_beds > self.max_beds:
             raise ValueError("min_beds cannot be greater than max_beds")
+        if self.min_year_built is not None and self.max_year_built is not None and self.min_year_built > self.max_year_built:
+            raise ValueError("min_year_built cannot be later than max_year_built")
         return self
 
 

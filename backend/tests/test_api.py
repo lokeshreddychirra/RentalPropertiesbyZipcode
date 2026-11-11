@@ -83,6 +83,10 @@ async def test_metric_and_listing_filters(client):
         assert card["bedrooms"] >= 3
         assert card["long_term"]["gross_yield_pct"] >= 8
         assert card["city"] == "Atlanta"
+    built = await run_search(client, {**filters, "min_year_built": 1960, "max_year_built": 2005})
+    built_items = (await results(client, built["id"], page_size=200))["items"]
+    assert 0 < len(built_items) < data["total"] and all(1960 <= c["year_built"] <= 2005 for c in built_items)
+    assert (await client.post(f"{API}/searches/run", json={"filters": {**filters, "min_year_built": 2010, "max_year_built": 1990}})).status_code == 422
     strict = await run_search(client, {**filters, "min_cash_flow": 300, "min_cap_rate": 6})
     strict_data = await results(client, strict["id"], page_size=200)
     assert 0 < strict_data["total"] < data["total"]

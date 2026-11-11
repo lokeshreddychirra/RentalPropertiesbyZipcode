@@ -66,6 +66,8 @@ async def search_properties(
     property_types: Annotated[list[PropertyType] | None, Query()] = None,
     max_hoa: Decimal | None = None,
     max_days_on_market: int | None = None,
+    min_year_built: int | None = None,
+    max_year_built: int | None = None,
     strategy: Annotated[str, Query(pattern="^(ltr|str|both)$")] = "both",
     sort: SortKey = "score",
     page: Annotated[int, Query(ge=1)] = 1,
@@ -83,7 +85,7 @@ async def search_properties(
             zip_codes=zip_codes or [], cities=cities or [], state=state, county=county, radius_miles=radius_miles, polygon=parse_polygon(polygon),
             min_price=min_price, max_price=max_price, min_gross_yield=min_gross_yield, min_net_yield=min_net_yield, min_cap_rate=min_cap_rate,
             min_cash_on_cash=min_cash_on_cash, min_cash_flow=min_cash_flow, min_beds=min_beds, max_beds=max_beds, property_types=property_types or [],
-            max_hoa=max_hoa, max_days_on_market=max_days_on_market, strategy=strategy,  # type: ignore[arg-type]
+            max_hoa=max_hoa, max_days_on_market=max_days_on_market, min_year_built=min_year_built, max_year_built=max_year_built, strategy=strategy,  # type: ignore[arg-type]
         )
     except ValueError as exc:
         errors = getattr(exc, "errors", lambda: [])()

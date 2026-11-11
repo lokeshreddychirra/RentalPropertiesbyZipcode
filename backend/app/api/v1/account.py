@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 
 from app.api.deps import AdminUser, CurrentUser, Session, rate_limit
 from app.core.config import get_settings
@@ -135,11 +135,25 @@ class AdminUserOut(BaseModel):
     billed_online: bool
 
 
+class PlanSummary(BaseModel):
+    plan: str
+    name: str
+    users: int
+    zip_searches: int  # ZIP codes searched in the current allowance period (lifetime for Free)
+    property_reports: int
+    revenue_usd: Num
+
+
 class AdminUsersOut(BaseModel):
     users: list[AdminUserOut]
     total: int
     by_plan: dict[str, int]
     monthly_revenue_usd: Num
+    plan_summary: list[PlanSummary]
+    zip_searches_this_month: int
+    property_reports_this_month: int
+    new_users_this_month: int
+    active_users_this_month: int
 
 
 class AdminUserPatch(BaseModel):
@@ -207,7 +221,38 @@ async def admin_users(
     total = sum(counts.values())
     catalog = plans.plans()
     revenue = sum((catalog[key].price_usd * n for key, n in counts.items() if key in catalog), Decimal("0"))
-    return AdminUsersOut(users=[await _admin_row(session, u) for u in users], total=total, by_plan=counts, monthly_revenue_usd=revenue)
+
+    # Usage per plan in each plan's own allowance period: lifetime for Free, this month for paid plans.
+    now = datetime.now(UTC)
+    month = now.strftime("%Y-%m")
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    own_period = case((User.plan == "free", "lifetime"), else_=month)
+    usage_rows = (
+        await session.execute(
+            select(User.plan, UserUsage.kind, func.count())
+            .join(User, User.id == UserUsage.user_id)
+            .where(UserUsage.period == own_period)
+            .group_by(User.plan, UserUsage.kind)
+        )
+    ).all()
+    usage = {(plan, kind): n for plan, kind, n in usage_rows}
+    summary = [
+        PlanSummary(
+            plan=key, name=plan.name, users=counts.get(key, 0), zip_searches=usage.get((key, plans.ZIP_SEARCH), 0),
+            property_reports=usage.get((key, plans.PROPERTY_REPORT), 0), revenue_usd=plan.price_usd * counts.get(key, 0),
+        )
+        for key, plan in catalog.items()
+    ]
+    month_usage = dict(
+        (await session.execute(select(UserUsage.kind, func.count()).where(UserUsage.created_at >= month_start).group_by(UserUsage.kind))).all()
+    )
+    new_users = (await session.execute(select(func.count()).select_from(User).where(User.created_at >= month_start))).scalar_one()
+    active = (await session.execute(select(func.count()).select_from(User).where(User.last_login_at >= month_start))).scalar_one()
+    return AdminUsersOut(
+        users=[await _admin_row(session, u) for u in users], total=total, by_plan=counts, monthly_revenue_usd=revenue, plan_summary=summary,
+        zip_searches_this_month=month_usage.get(plans.ZIP_SEARCH, 0), property_reports_this_month=month_usage.get(plans.PROPERTY_REPORT, 0),
+        new_users_this_month=new_users, active_users_this_month=active,
+    )
 
 
 @router.patch("/admin/users/{user_id}", response_model=AdminUserOut)

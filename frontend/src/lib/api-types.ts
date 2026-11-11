@@ -1289,6 +1289,16 @@ export interface components {
             };
             /** Monthly Revenue Usd */
             monthly_revenue_usd: number;
+            /** Plan Summary */
+            plan_summary: components["schemas"]["PlanSummary"][];
+            /** Zip Searches This Month */
+            zip_searches_this_month: number;
+            /** Property Reports This Month */
+            property_reports_this_month: number;
+            /** New Users This Month */
+            new_users_this_month: number;
+            /** Active Users This Month */
+            active_users_this_month: number;
         };
         /** AnalysisRequest */
         AnalysisRequest: {
@@ -2443,6 +2453,21 @@ export interface components {
             /** Features */
             features: string[];
         };
+        /** PlanSummary */
+        PlanSummary: {
+            /** Plan */
+            plan: string;
+            /** Name */
+            name: string;
+            /** Users */
+            users: number;
+            /** Zip Searches */
+            zip_searches: number;
+            /** Property Reports */
+            property_reports: number;
+            /** Revenue Usd */
+            revenue_usd: number;
+        };
         /** PlanUpdate */
         PlanUpdate: {
             /** Price Usd */
@@ -3389,6 +3414,10 @@ export interface components {
             max_hoa?: number | string | null;
             /** Max Days On Market */
             max_days_on_market?: number | null;
+            /** Min Year Built */
+            min_year_built?: number | null;
+            /** Max Year Built */
+            max_year_built?: number | null;
             /**
              * Strategy
              * @default both
@@ -3452,6 +3481,10 @@ export interface components {
             max_hoa?: number | null;
             /** Max Days On Market */
             max_days_on_market?: number | null;
+            /** Min Year Built */
+            min_year_built?: number | null;
+            /** Max Year Built */
+            max_year_built?: number | null;
             /**
              * Strategy
              * @default both
@@ -4618,6 +4651,8 @@ export interface operations {
                 property_types?: ("single_family" | "condo" | "townhouse" | "multi_family" | "manufactured" | "apartment" | "land" | "other")[] | null;
                 max_hoa?: number | string | null;
                 max_days_on_market?: number | null;
+                min_year_built?: number | null;
+                max_year_built?: number | null;
                 strategy?: string;
                 sort?: "score" | "gross_yield" | "net_yield" | "cap_rate" | "cash_on_cash" | "cash_flow" | "upfront" | "dscr" | "ltr_return" | "str_return" | "price_asc" | "price_desc" | "newest";
                 page?: number;

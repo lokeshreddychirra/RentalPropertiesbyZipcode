@@ -68,6 +68,9 @@ async def test_free_plan_allows_one_zip_and_paid_plans_raise_the_limit(app, clie
         target = listing["users"][0]
         assert target["email"] == email and target["login_count"] == 1 and target["last_login_at"] and target["searched_zips"] == ["30269"]
         assert "password" not in json.dumps(target).lower()
+        summary = {row["plan"]: row for row in listing["plan_summary"]}
+        assert summary["free"]["users"] >= 1 and summary["free"]["zip_searches"] >= 1 and summary["pro"]["revenue_usd"] == summary["pro"]["users"] * 19
+        assert listing["zip_searches_this_month"] >= 1 and listing["new_users_this_month"] >= 1
         updated = (await client.patch(f"{API}/admin/users/{target['id']}", json={"plan": "pro"})).json()
         assert updated["plan"] == "pro" and updated["plan_status"] == "manual"
 

@@ -340,6 +340,11 @@ def passes_listing_filters(record: ListingRecord, filters: SearchFilters, resolv
         return False
     if filters.max_days_on_market is not None and (record.days_on_market is None or record.days_on_market > filters.max_days_on_market):
         return False
+    # Homes with an unknown build year are excluded only when a year range is requested.
+    if filters.min_year_built is not None and (record.year_built is None or record.year_built < filters.min_year_built):
+        return False
+    if filters.max_year_built is not None and (record.year_built is None or record.year_built > filters.max_year_built):
+        return False
     if filters.state and record.state and record.state != filters.state and not (filters.zip_codes or filters.cities):
         return False
     if resolved.county_filter and (record.county or "").lower().removesuffix(" county").strip() != resolved.county_filter:
