@@ -3,150 +3,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, CircleDashed, Lock, RotateCcw, Trash2 } from "lucide-react";
+import { CheckCircle2, CircleDashed, Lock, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton, Table, Td, Th } from "@/components/ui/card";
-import { Field, Input, Label, NumberInput, Select, Switch, Textarea } from "@/components/ui/form";
+import { Field, Input, NumberInput, Select, Switch, Textarea } from "@/components/ui/form";
 import { api, errorMessage } from "@/lib/api";
-import { useApp, useSession, useStatus } from "@/lib/store";
-import type { AssumptionSection, ProviderUsage, ScoreWeights } from "@/lib/types";
+import { useSession, useStatus } from "@/lib/store";
+import type { ProviderUsage } from "@/lib/types";
 import { relativeTime, shortDate } from "@/lib/utils";
-
-const DEFAULT_FIELDS: { title: string; fields: { section: AssumptionSection; name: string; label: string; suffix?: string; prefix?: string }[] }[] = [
-  {
-    title: "Financing",
-    fields: [
-      { section: "financing", name: "down_payment_pct", label: "Down payment", suffix: "%" },
-      { section: "financing", name: "interest_rate_pct", label: "Interest rate", suffix: "%" },
-      { section: "financing", name: "loan_term_years", label: "Loan term", suffix: "yr" },
-      { section: "acquisition", name: "closing_cost_pct", label: "Closing costs", suffix: "%" },
-      { section: "acquisition", name: "reserve_months", label: "Cash reserves", suffix: "mo" },
-    ],
-  },
-  {
-    title: "Long-term rental",
-    fields: [
-      { section: "long_term", name: "vacancy_pct", label: "Vacancy", suffix: "%" },
-      { section: "long_term", name: "management_pct", label: "Management", suffix: "%" },
-      { section: "long_term", name: "maintenance_pct", label: "Maintenance", suffix: "%" },
-      { section: "long_term", name: "capex_pct", label: "CapEx reserve", suffix: "%" },
-    ],
-  },
-  {
-    title: "Short-term rental",
-    fields: [
-      { section: "short_term", name: "management_pct", label: "Management", suffix: "%" },
-      { section: "short_term", name: "platform_fee_pct", label: "Platform fee", suffix: "%" },
-      { section: "short_term", name: "unavailable_nights", label: "Unavailable nights", suffix: "nts" },
-      { section: "short_term", name: "utilities_monthly", label: "Utilities / mo", prefix: "$" },
-    ],
-  },
-  {
-    title: "Ownership & growth",
-    fields: [
-      { section: "fixed", name: "property_tax_rate_pct", label: "Tax rate (when estimating)", suffix: "%" },
-      { section: "fixed", name: "insurance_rate_pct", label: "Insurance rate (when estimating)", suffix: "%" },
-      { section: "forecast", name: "rent_growth_pct", label: "Rent growth / yr", suffix: "%" },
-      { section: "forecast", name: "appreciation_pct", label: "Appreciation / yr", suffix: "%" },
-      { section: "forecast", name: "expense_inflation_pct", label: "Expense inflation / yr", suffix: "%" },
-      { section: "forecast", name: "selling_cost_pct", label: "Selling costs", suffix: "%" },
-    ],
-  },
-];
-
-function DefaultsCard() {
-  const { defaults, setDefault, resetDefaults, hydrated } = useApp();
-  const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: Infinity });
-  const { user } = useSession();
-  const system = meta.data?.default_assumptions as Record<string, Record<string, number | null>> | undefined;
-  return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
-        <div>
-          <CardTitle>Default assumptions</CardTitle>
-          <CardDescription>
-            Applied to every search, ranking and analysis. Leave a field empty to use the standard default shown in grey. {user ? "Saved to your account." : "Stored in this browser — sign in to keep them across devices."}
-          </CardDescription>
-        </div>
-        <Button variant="outline" size="sm" onClick={resetDefaults}>
-          <RotateCcw /> Reset all
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {!hydrated || !system ? (
-          <Skeleton className="h-64 w-full" />
-        ) : (
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {DEFAULT_FIELDS.map((group) => (
-              <fieldset key={group.title} className="space-y-3">
-                <legend className="mb-1 text-sm font-semibold">{group.title}</legend>
-                {group.fields.map((field) => {
-                  const current = (defaults[field.section] as Record<string, number | null> | undefined)?.[field.name] ?? null;
-                  const id = `d-${field.section}-${field.name}`;
-                  return (
-                    <div key={id} className="grid grid-cols-[minmax(0,1fr)_6.5rem] items-center gap-2">
-                      <Label htmlFor={id}>{field.label}</Label>
-                      <NumberInput id={id} value={current} placeholder={String(system[field.section]?.[field.name] ?? "")} onValueChange={(v) => setDefault(field.section, field.name, v)} prefix={field.prefix} suffix={field.suffix} className="h-8 text-right" />
-                    </div>
-                  );
-                })}
-              </fieldset>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function WeightsCard() {
-  const { weights, setWeights, hydrated } = useApp();
-  const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: Infinity });
-  if (!meta.data || !hydrated) return <Skeleton className="h-64 w-full" />;
-  const base = meta.data.default_weights as Record<string, number>;
-  const current: Record<string, number> = { ...base, ...((weights ?? {}) as Record<string, number>) };
-  const total = Object.values(current).reduce((sum, v) => sum + (v || 0), 0);
-  return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
-        <div>
-          <CardTitle>Investment score weights</CardTitle>
-          <CardDescription>
-            The 0–100 score is a weighted average of seven components, each normalised on a fixed scale. Weights are relative — they are rescaled to total 100%. Properties with
-            low data confidence are capped at 70, and insufficient data at 40, whatever the weights.
-          </CardDescription>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setWeights(null)} disabled={!weights}>
-          <RotateCcw /> Restore defaults
-        </Button>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-x-8 gap-y-3 md:grid-cols-2">
-          {Object.keys(base).map((key) => (
-            <div key={key} className="grid grid-cols-[minmax(0,1fr)_5.5rem_3.5rem] items-center gap-2">
-              <Label htmlFor={`w-${key}`}>{meta.data.weight_labels[key] ?? key}</Label>
-              <NumberInput
-                id={`w-${key}`}
-                value={current[key]}
-                min={0}
-                max={100}
-                className="h-8 text-right"
-                onValueChange={(v) => {
-                  if (v === null) return;
-                  const next = { ...current, [key]: Math.min(Math.max(v, 0), 100) };
-                  if (Object.values(next).reduce((s, x) => s + x, 0) <= 0) return toast.warning("At least one weight must be above zero.");
-                  setWeights(next as ScoreWeights);
-                }}
-              />
-              <span className="tnum text-right text-xs text-muted-foreground">{total > 0 ? ((current[key] / total) * 100).toFixed(0) : 0}%</span>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function DataSourcesCard() {
   const { data: status } = useStatus();
@@ -497,10 +362,8 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 lg:px-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">Your default assumptions, scoring, data sources and API budgets.</p>
+        <p className="text-sm text-muted-foreground">Data sources, API budgets, notifications and short-term rental rules.</p>
       </div>
-      <DefaultsCard />
-      <WeightsCard />
       <NotificationsCard />
       <DataSourcesCard />
       <UsageCard />
