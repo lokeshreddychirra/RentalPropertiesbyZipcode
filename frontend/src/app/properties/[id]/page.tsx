@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bookmark, BookmarkCheck, ExternalLink, GitCompareArrows, Images, Save, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkCheck, ExternalLink, GitCompareArrows, Save, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { MapView } from "@/components/map/map-view";
 import { AssumptionsPanel } from "@/components/property/assumptions-panel";
@@ -281,6 +281,20 @@ export default function PropertyPage() {
           </div>
           <p className="text-sm text-muted-foreground">
             {[data.address_line2, ctx.city, ctx.state].filter(Boolean).join(", ")} {ctx.zip_code} · {ctx.bedrooms ?? "—"} bd · {ctx.bathrooms ?? "—"} ba · {ctx.square_feet ? `${num(ctx.square_feet)} sqft` : "sqft n/a"}
+            {!ctx.is_demo && ctx.formatted_address ? (
+              <>
+                {" · "}
+                <a
+                  href={zillowUrl(ctx.formatted_address)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Opens this address on Zillow in a new tab"
+                  className="font-medium text-primary underline underline-offset-2 hover:text-foreground"
+                >
+                  Photos
+                </a>
+              </>
+            ) : null}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <p className="tnum text-3xl font-semibold tracking-tight">{usd(ctx.price)}</p>
@@ -326,15 +340,6 @@ export default function PropertyPage() {
                 <ExternalLink /> Open original listing
               </a>
             </Button>
-          ) : null}
-          {!ctx.is_demo && ctx.formatted_address ? (
-            <Hint content="Opens this address on Zillow in a new tab. Zillow's page may show a different status or price than this listing.">
-              <Button asChild>
-                <a href={zillowUrl(ctx.formatted_address)} target="_blank" rel="noopener noreferrer">
-                  <Images /> Photos on Zillow
-                </a>
-              </Button>
-            </Hint>
           ) : null}
         </div>
       </header>
