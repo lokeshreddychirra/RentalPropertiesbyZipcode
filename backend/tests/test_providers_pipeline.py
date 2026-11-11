@@ -221,6 +221,17 @@ def test_ai_grounding_rejects_invented_numbers():
     assert bad == ["11.5", "25"]
 
 
+def test_empty_results_explain_which_filter_matched_nothing():
+    from app.services.search import explain_no_matches
+
+    records = [parse_listing(rentcast_listing(i, yearBuilt=1950 + i, price=100000 + i * 1000)) for i in range(20)]
+    message = explain_no_matches(records, SearchFilters(zip_codes=["30720"], min_year_built=1980))
+    assert "20 active listings" in message and "none are built 1980 or later (homes here were built 1950–1969)" in message
+    both = explain_no_matches(records, SearchFilters(zip_codes=["30720"], min_year_built=1960, max_price=105000))
+    assert "none match all of your filters together" in both
+    assert explain_no_matches(records, SearchFilters(zip_codes=["30720"], max_price=50000)).count("$100,000–$119,000") == 1
+
+
 def test_land_listings_are_excluded_unless_requested():
     from app.services.search import ResolvedSearch, passes_listing_filters
 

@@ -638,6 +638,48 @@ async def _budgeted_top_n(provider_key: str, wanted: int) -> tuple[int, bool]:
     return min(wanted, remaining), remaining < wanted
 
 
+def explain_no_matches(records: list[ListingRecord], filters: SearchFilters) -> str | None:
+    """Why every listing was screened out: which filters match nothing, with the range that exists."""
+    active = [r for r in records if r.status == "active" and r.price and r.price > 0 and r.property_type != "land"]
+    if not active:
+        return None
+
+    def span(values: list, fmt) -> str:
+        values = [v for v in values if v is not None]
+        return f"{fmt(min(values))}–{fmt(max(values))}" if values else "not recorded"
+
+    money = lambda v: f"${int(v):,}"  # noqa: E731
+    checks = []
+    if filters.min_year_built is not None or filters.max_year_built is not None:
+        lo, hi = filters.min_year_built, filters.max_year_built
+        label = f"built {lo}–{hi}" if lo and hi else f"built {lo} or later" if lo else f"built {hi} or earlier"
+        ok = [r for r in active if r.year_built is not None and (lo is None or r.year_built >= lo) and (hi is None or r.year_built <= hi)]
+        checks.append((label, ok, f"homes here were built {span([r.year_built for r in active], str)}"))
+    if filters.min_price is not None or filters.max_price is not None:
+        ok = [r for r in active if (filters.min_price is None or r.price >= filters.min_price) and (filters.max_price is None or r.price <= filters.max_price)]
+        checks.append(("your price range", ok, f"prices here are {span([r.price for r in active], money)}"))
+    if filters.min_beds is not None or filters.max_beds is not None:
+        ok = [r for r in active if r.bedrooms is not None and (filters.min_beds is None or r.bedrooms >= filters.min_beds) and (filters.max_beds is None or r.bedrooms <= filters.max_beds)]
+        checks.append(("your bedroom range", ok, f"homes here have {span([r.bedrooms for r in active], lambda v: str(int(v)))} bedrooms"))
+    if filters.property_types:
+        ok = [r for r in active if r.property_type in filters.property_types]
+        kinds = sorted({(r.property_type or "other").replace("_", " ") for r in active})
+        checks.append(("the selected home types", ok, f"listings here are {', '.join(kinds)}"))
+    if filters.max_hoa is not None:
+        ok = [r for r in active if r.hoa_fee_monthly is None or r.hoa_fee_monthly <= filters.max_hoa]
+        checks.append((f"HOA up to ${int(filters.max_hoa)}", ok, "every listing reports a higher HOA fee"))
+    if filters.max_days_on_market is not None:
+        ok = [r for r in active if r.days_on_market is not None and r.days_on_market <= filters.max_days_on_market]
+        checks.append((f"listed within {filters.max_days_on_market} days", ok, "every listing has been on the market longer"))
+    blockers = [f"none are {label} ({detail})" for label, ok, detail in checks if not ok]
+    lead = f"{len(active)} active listing{'s' if len(active) != 1 else ''} were found in this area, but "
+    if blockers:
+        return lead + "; ".join(blockers) + ". Widen that filter to see results."
+    if checks:
+        return lead + "none match all of your filters together. Try removing one."
+    return None
+
+
 async def execute_search(request: SearchRunRequest, progress: ProgressFn, providers: ProviderSet | None = None) -> SearchOutcome:
     settings = get_settings()
     providers = providers or get_providers()
@@ -679,7 +721,8 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
     candidates = [m for m in merged if passes_listing_filters(m.primary, filters, resolved) and in_circles(m.primary)]
     candidate_ids = [m.property_id for m in candidates]
     if not candidate_ids:
-        return SearchOutcome(cards=[], listings_fetched=len(merged), partial_reasons=partial, warnings=warnings)
+        reason = explain_no_matches([m.primary for m in merged], filters)
+        return SearchOutcome(cards=[], listings_fetched=len(merged), partial_reasons=partial, warnings=([reason] if reason else []) + warnings)
 
     # -- ZIP-level rent statistics (cheap: one request per ZIP) ----------------
     async with session_scope() as session:

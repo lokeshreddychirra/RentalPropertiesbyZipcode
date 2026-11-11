@@ -612,7 +612,9 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
                 ? `${data.summary.total.toLocaleString()} listings were analysed, but none meet the return thresholds${activeBbox || polygonParam ? " inside the selected map area" : ""}. Try lowering the yield, cap-rate or cash-flow minimums.`
                 : job.data_mode === "demo"
                   ? "The demo dataset only covers a set of sample markets (listed under the search panel). Try Atlanta, GA or ZIP 30269."
-                  : "No active listings were found for this location and price range."}
+                  : (job.listings_fetched ?? 0) > 0
+                    ? `${job.listings_fetched} listings were found in this ZIP code, but none match your filters. The note above shows which filter to widen.`
+                    : "No active listings were found in this ZIP code right now."}
             </EmptyState>
           ) : null}
 
