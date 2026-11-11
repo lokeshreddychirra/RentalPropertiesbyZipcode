@@ -3,84 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Bookmark, Database, Gauge, MapPin, Search } from "lucide-react";
+import { ArrowRight, Bookmark, MapPin } from "lucide-react";
 import { SearchExperience } from "@/components/search/search-experience";
-import { Card, Skeleton } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { describeFilters, searchHref } from "@/lib/filters";
 import { useSession, useStatus } from "@/lib/store";
 import type { SearchFilters } from "@/lib/types";
-import { cn } from "@/lib/utils";
-
-function Tile({ icon, label, value, sub, href, tone }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub: React.ReactNode; href?: string; tone?: string }) {
-  const body = (
-    <Card className={cn("flex h-full items-start gap-3 p-4", href && "transition-shadow hover:shadow-md")}>
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-4">{icon}</span>
-      <span className="min-w-0">
-        <span className="block text-xs text-muted-foreground">{label}</span>
-        <span className={cn("tnum block truncate text-lg font-semibold leading-tight", tone)}>{value}</span>
-        <span className="block truncate text-[11px] text-muted-foreground">{sub}</span>
-      </span>
-    </Card>
-  );
-  return href ? (
-    <Link href={href} className="block">
-      {body}
-    </Link>
-  ) : (
-    body
-  );
-}
-
-/** Account tiles: saved items for signed-in users, plus data source and API usage for administrators. */
-function Overview() {
-  const { data: status } = useStatus();
-  const { user } = useSession();
-  const isAdmin = user?.role === "admin";
-  const usage = useQuery({ queryKey: ["usage"], queryFn: api.usage, staleTime: 60_000, enabled: isAdmin });
-  const favorites = useQuery({ queryKey: ["favorite-ids", user?.id], queryFn: api.favoriteIds, enabled: !!user });
-  const saved = useQuery({ queryKey: ["saved-searches", user?.id], queryFn: api.savedSearches, enabled: !!user });
-  if (!user) return null;
-
-  const listings = usage.data?.providers.find((p) => p.key === "rentcast");
-  const spend = usage.data?.providers.reduce((sum, p) => sum + p.estimated_cost_this_month_usd, 0) ?? 0;
-
-  return (
-    <div className={cn("grid grid-cols-2 gap-3", isAdmin ? "lg:grid-cols-4" : "max-w-xl")}>
-      {isAdmin ? (
-        status ? (
-          <Tile
-            icon={<Database />}
-            label="Data source"
-            value={status.data_mode === "live" ? "Live listings" : "Demo dataset"}
-            tone={status.data_mode === "live" ? "text-positive" : "text-[#5b21b6]"}
-            sub={status.data_mode === "live" ? "RentCast connected" : "Sample properties — not real listings"}
-            href="/settings#data-sources"
-          />
-        ) : (
-          <Skeleton className="h-[74px]" />
-        )
-      ) : null}
-      {isAdmin ? (
-        <Tile
-          icon={<Gauge />}
-          label="API usage this month"
-          value={status?.data_mode === "demo" ? "No paid calls" : listings ? `${listings.requests_this_month.toLocaleString()} requests` : "—"}
-          sub={
-            status?.data_mode === "demo"
-              ? "Demo mode makes no provider requests"
-              : listings?.monthly_request_limit
-                ? `${listings.requests_this_month} of ${listings.monthly_request_limit} allowed · est. $${spend.toFixed(2)}`
-                : `Estimated $${spend.toFixed(2)}`
-          }
-          href="/settings#usage"
-        />
-      ) : null}
-      <Tile icon={<Bookmark />} label="Saved properties" value={favorites.data?.length ?? "—"} sub="Watchlists and notes" href="/saved" />
-      <Tile icon={<Search />} label="Saved searches" value={saved.data?.length ?? "—"} sub={`${saved.data?.filter((s) => s.alerts_enabled).length ?? 0} with alerts`} href="/saved?tab=searches" />
-    </div>
-  );
-}
 
 interface Starter {
   label: string;
@@ -173,12 +102,11 @@ export default function DashboardPage() {
       <SearchExperience
         basePath="/"
         heading={
-          <div className="space-y-4">
+          <div>
             <div>
               <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Find rental properties that pay</h1>
               <p className="mt-1 text-sm text-muted-foreground">Search any US ZIP code. Every listing is ranked by cash flow, yield and risk-adjusted return.</p>
             </div>
-            <Overview />
           </div>
         }
         idle={<QuickStart />}

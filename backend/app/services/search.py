@@ -140,7 +140,9 @@ async def create_job(request: SearchRunRequest) -> tuple[SearchJob, bool]:
         cached_id = await redis.get(f"searchcache:{digest}")
         if cached_id:
             cached = await load_job(cached_id)
-            if cached and cached.status in ("completed", "running", "queued") and (cached.status != "completed" or await redis.exists(_result_key(cached_id))):
+            # Partial results (budget reached, provider error) are never reused: the next search retries.
+            reusable = cached is not None and not cached.partial and cached.status in ("completed", "running", "queued")
+            if cached and reusable and (cached.status != "completed" or await redis.exists(_result_key(cached_id))):
                 cached.cached = cached.status == "completed"
                 return cached, False
     job = SearchJob(id=uuid.uuid4().hex, status="queued", data_mode=mode, created_at=datetime.now(UTC), filters=request.filters)
@@ -845,6 +847,7 @@ async def run_search_job(job_id: str) -> None:
         job.error = exc.message if isinstance(exc, ProviderError) else "The search could not be completed. Please try again."
         job.finished_at = datetime.now(UTC)
         await save_job(job)
+        await get_redis().delete(f"searchcache:{request_hash(request, job.data_mode)}")
         return
 
     snapshot = {"cards": [card.model_dump(mode="json") for card in outcome.cards]}
@@ -858,6 +861,8 @@ async def run_search_job(job_id: str) -> None:
     job.progress = JobProgress(stage="done", message=f"Ranked {len(outcome.cards):,} properties", percent=100, pages_fetched=job.progress.pages_fetched, listings_found=job.progress.listings_found)
     job.finished_at = datetime.now(UTC)
     await save_job(job)
+    if job.partial:
+        await get_redis().delete(f"searchcache:{request_hash(request, job.data_mode)}")
 
 
 # --------------------------------------------------------------------------- querying results

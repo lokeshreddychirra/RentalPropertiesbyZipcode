@@ -314,3 +314,18 @@ def test_rental_listing_aggregation():
     assert stats.median_rent == D("1250.00")
     assert {b.bedrooms: b.count for b in stats.rent_by_bedrooms} == {2: 3, 3: 3}
     assert not stats.has_reliable_rent()  # 6 listings: below both sample thresholds
+
+
+async def test_partial_results_are_not_served_from_the_search_cache(app):
+    """A search cut short (e.g. budget reached) must be retried, not replayed, once the cause is fixed."""
+    from app.core.redis import get_redis
+    from app.services import search as search_service
+
+    request = SearchRunRequest(filters=SearchFilters(zip_codes=["99001"]))
+    job, needs_run = await search_service.create_job(request)
+    assert needs_run
+    job.status, job.partial, job.partial_reasons = "completed", True, ["RentCast API budget reached"]
+    await search_service.save_job(job)
+    await get_redis().set(f"searchjob:{job.id}:result", '{"cards": []}')
+    again, needs_run_again = await search_service.create_job(request)
+    assert needs_run_again and again.id != job.id

@@ -3,15 +3,71 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock, Search } from "lucide-react";
+import { Database, DollarSign, Gauge, Lock, Search, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton, Table, Td, Th } from "@/components/ui/card";
 import { Field, Input, NumberInput, Select } from "@/components/ui/form";
 import { api, errorMessage } from "@/lib/api";
-import { useSession } from "@/lib/store";
+import { useSession, useStatus } from "@/lib/store";
 import type { AdminUser, PlanInfo } from "@/lib/types";
-import { relativeTime, shortDate } from "@/lib/utils";
+import { cn, relativeTime, shortDate } from "@/lib/utils";
+
+function Stat({ icon, label, value, sub, href, tone }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub: React.ReactNode; href?: string; tone?: string }) {
+  const body = (
+    <Card className={cn("flex h-full items-start gap-3 p-4", href && "transition-shadow hover:shadow-md")}>
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-4">{icon}</span>
+      <span className="min-w-0">
+        <span className="block text-xs text-muted-foreground">{label}</span>
+        <span className={cn("tnum block truncate text-lg font-semibold leading-tight", tone)}>{value}</span>
+        <span className="block truncate text-[11px] text-muted-foreground">{sub}</span>
+      </span>
+    </Card>
+  );
+  return href ? (
+    <Link href={href} className="block">
+      {body}
+    </Link>
+  ) : (
+    body
+  );
+}
+
+/** Site overview for the administrator: data source, RentCast usage, accounts and revenue. */
+function AdminStats({ users }: { users: { total: number; by_plan: Record<string, number>; monthly_revenue_usd: number } | undefined }) {
+  const { data: status } = useStatus();
+  const usage = useQuery({ queryKey: ["usage"], queryFn: api.usage, staleTime: 60_000 });
+  const rentcast = usage.data?.providers.find((p) => p.key === "rentcast");
+  const live = status?.data_mode === "live";
+  const paid = users ? (users.by_plan.pro ?? 0) + (users.by_plan.premium ?? 0) : 0;
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <Stat
+        icon={<Database />}
+        label="Data source"
+        value={status ? (live ? "Live listings" : "Demo dataset") : "—"}
+        tone={live ? "text-positive" : "text-[#5b21b6]"}
+        sub={live ? "RentCast connected" : "Sample properties — not real listings"}
+        href="/settings#data-sources"
+      />
+      <Stat
+        icon={<Gauge />}
+        label="RentCast requests this month"
+        value={rentcast ? `${rentcast.requests_this_month.toLocaleString()}${rentcast.monthly_request_limit ? ` of ${rentcast.monthly_request_limit}` : ""}` : "—"}
+        tone={rentcast?.monthly_request_limit && rentcast.requests_this_month >= rentcast.monthly_request_limit ? "text-negative" : undefined}
+        sub={rentcast ? `Est. $${rentcast.estimated_cost_this_month_usd.toFixed(2)} · change the limit in Settings` : "Loading…"}
+        href="/settings#usage"
+      />
+      <Stat icon={<Users />} label="Accounts" value={users ? users.total.toLocaleString() : "—"} sub={users ? `${paid} paying · ${users.by_plan.free ?? 0} free` : "Loading…"} />
+      <Stat
+        icon={<DollarSign />}
+        label="Monthly revenue (list price)"
+        value={users ? `$${Number(users.monthly_revenue_usd).toFixed(0)}` : "—"}
+        sub={users ? `${users.by_plan.pro ?? 0} Pro · ${users.by_plan.premium ?? 0} Premium` : "Loading…"}
+      />
+    </div>
+  );
+}
 
 type PlanDraft = { price_usd: number | null; zip_searches: number | null; property_reports: number | null; zips_per_search: number | null };
 
@@ -163,9 +219,11 @@ export default function AdminUsersPage() {
   return (
     <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 lg:px-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Users & plans</h1>
-        <p className="text-sm text-muted-foreground">Set what each plan includes, see every account and change plans by hand.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Admin portal</h1>
+        <p className="text-sm text-muted-foreground">Site usage, plan allowances and every user account.</p>
       </div>
+
+      <AdminStats users={data} />
 
       <Card>
         <CardHeader>

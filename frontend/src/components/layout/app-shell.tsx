@@ -21,7 +21,7 @@ const NAV: { href: string; label: string; icon: typeof Search; access: Access }[
   { href: "/saved", label: "Saved Properties", icon: Bookmark, access: "user" },
   { href: "/market", label: "Market Analytics", icon: BarChart3, access: "everyone" },
   { href: "/pricing", label: "Plans & Pricing", icon: CreditCard, access: "everyone" },
-  { href: "/admin/users", label: "Users & Plans", icon: Users, access: "admin" },
+  { href: "/admin/users", label: "Admin Portal", icon: Users, access: "admin" },
   { href: "/settings", label: "Settings", icon: Settings, access: "admin" },
 ];
 
@@ -195,7 +195,7 @@ function UserMenu() {
           <>
             <DropdownMenuItem asChild>
               <Link href="/admin/users">
-                <Users /> Users & plans
+                <Users /> Admin portal
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
