@@ -59,7 +59,7 @@ async def status() -> SystemStatus:
     return SystemStatus(
         data_mode="demo" if demo else "live",
         demo_notice=(
-            "Demo mode: all properties, rents and short-term rental figures are synthetic sample data — not real listings. "
+            "Demo mode: all properties and rents are synthetic sample data — not real listings. "
             "Add a RentCast API key to search live listings."
             if demo
             else None
@@ -67,7 +67,6 @@ async def status() -> SystemStatus:
         demo_markets=demo_markets_summary() if demo else [],
         providers=[
             ProviderStatus(key="rentcast", name="RentCast", purpose="For-sale listings, rent & value estimates, market statistics, tax records", configured=s.rentcast_api_key is not None, attribution=PROVIDER_SPECS["rentcast"].attribution, note=None if s.rentcast_api_key else "Set RENTCAST_API_KEY to enable live listings"),
-            ProviderStatus(key="airdna", name="AirDNA", purpose="Short-term rental revenue estimates", configured=s.airdna_api_key is not None, attribution=PROVIDER_SPECS["airdna"].attribution, note=None if s.airdna_api_key else "Set AIRDNA_API_KEY; without it STR revenue is unavailable unless entered manually"),
             ProviderStatus(key="mapbox", name="Mapbox", purpose="Geocoding for radius and county searches", configured=s.mapbox_access_token is not None, attribution=PROVIDER_SPECS["mapbox"].attribution, note=None if s.mapbox_access_token else "Set MAPBOX_ACCESS_TOKEN; without it radius searches fall back to the named area"),
             ProviderStatus(key="anthropic", name="Anthropic Claude", purpose="AI property analysis and natural-language search", configured=s.llm_enabled, note=None if s.llm_enabled else "Set ANTHROPIC_API_KEY; without it deterministic rule-based summaries and parsing are used"),
         ],

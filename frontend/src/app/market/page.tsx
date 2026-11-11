@@ -4,7 +4,6 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Search } from "lucide-react";
-import { LegalityBadge } from "@/components/property/bits";
 import { SERIES, SimpleBarChart, TrendChart } from "@/components/property/charts";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton, Table, Td, Th } from "@/components/ui/card";
@@ -31,7 +30,6 @@ function ZipCard({ market }: { market: ZipMarket }) {
             Source: {stats.provider === "demo" ? "Demo dataset" : stats.provider} · retrieved {relativeTime(stats.fetched_at)}
           </CardDescription>
         </div>
-        <LegalityBadge status={market.legality.status} label={market.legality.label} />
       </CardHeader>
       <CardContent className="space-y-5">
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">

@@ -6,7 +6,6 @@ import { AlertTriangle, Bot, CheckCircle2, CircleHelp, ListChecks, ShieldAlert, 
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Skeleton, Table, Td, Th } from "@/components/ui/card";
 import { Field, Input, NumberInput } from "@/components/ui/form";
-import { Hint } from "@/components/ui/overlays";
 import { api, errorMessage, type AnalysisBody } from "@/lib/api";
 import type {
   AIExplanationResponse,
@@ -22,34 +21,10 @@ import type {
   StrategyResult,
 } from "@/lib/types";
 import { cn, num, pct, ratio, relativeTime, shortDate, signTone, titleCase, usd } from "@/lib/utils";
-import { ConfidenceBadge, LegalityBadge, ProvenanceDot, ScoreRing } from "./bits";
-import { ExpenseChart, ForecastCashFlowChart, ForecastWealthChart, SERIES, SeasonalityChart } from "./charts";
+import { ConfidenceBadge, ProvenanceDot, ScoreRing } from "./bits";
+import { ExpenseChart, ForecastCashFlowChart, ForecastWealthChart, SERIES } from "./charts";
 
-const STRATEGY_LABEL: Record<Strategy, string> = { ltr: "Long-term rental", str: "Short-term rental" };
-
-export function StrategyToggle({ value, onChange, analysis }: { value: Strategy; onChange: (value: Strategy) => void; analysis: PropertyAnalysis }) {
-  return (
-    <div className="inline-flex rounded-lg bg-muted p-1" role="radiogroup" aria-label="Strategy">
-      {(["ltr", "str"] as const).map((key) => {
-        const available = key === "ltr" ? analysis.long_term.available : analysis.short_term.available;
-        return (
-          <button
-            key={key}
-            type="button"
-            role="radio"
-            aria-checked={value === key}
-            onClick={() => onChange(key)}
-            className={cn("inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-colors", value === key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
-          >
-            <span className="size-2 rounded-full" style={{ backgroundColor: SERIES[key] }} aria-hidden />
-            {key === "ltr" ? "Long-term" : "Short-term"}
-            {!available ? <span className="text-[10px] font-normal">(no data)</span> : null}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+const STRATEGY_LABEL: Record<Strategy, string> = { ltr: "Long-term rental", str: "Long-term rental" };
 
 function Unavailable({ result }: { result: StrategyResult }) {
   return (
@@ -61,47 +36,28 @@ function Unavailable({ result }: { result: StrategyResult }) {
 
 // ----------------------------------------------------------------------------- recommendation + headline
 
-export function RecommendationCard({ analysis }: { analysis: PropertyAnalysis }) {
-  const rec = analysis.recommendation;
-  const tone = rec.strategy === null ? "warning" : rec.conditional ? "warning" : "success";
-  return (
-    <Alert tone={tone} title={rec.strategy ? `Financially stronger strategy: ${rec.headline}` : rec.headline}>
-      <ul className="list-disc space-y-0.5 pl-4">
-        {rec.reasons.map((reason) => (
-          <li key={reason}>{reason}</li>
-        ))}
-      </ul>
-      <p className="mt-1.5 text-xs opacity-80">Based on your current assumptions. This is a comparison of estimates, not a prediction.</p>
-    </Alert>
-  );
-}
-
 export function HeadlineMetrics({ analysis }: { analysis: PropertyAnalysis }) {
   const columns: { key: Strategy; result: StrategyResult; score: InvestmentScore; quality: QualityAssessment }[] = [
     { key: "ltr", result: analysis.long_term, score: analysis.score_ltr, quality: analysis.quality_ltr },
-    { key: "str", result: analysis.short_term, score: analysis.score_str, quality: analysis.quality_str },
   ];
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid gap-4">
       {columns.map(({ key, result, score, quality }) => (
-        <Card key={key} className={cn(analysis.primary_strategy === key && "ring-1 ring-[hsl(var(--ring))]")}>
+        <Card key={key}>
           <CardHeader className="flex-row items-center justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <span className="size-2.5 rounded-full" style={{ backgroundColor: SERIES[key] }} aria-hidden />
-                {STRATEGY_LABEL[key]}
-                {analysis.primary_strategy === key ? <Badge tone="solid">Recommended{analysis.recommendation.conditional ? "*" : ""}</Badge> : null}
+                {STRATEGY_LABEL[key]} returns
               </CardTitle>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <ConfidenceBadge level={quality.label} />
-                {key === "str" ? <LegalityBadge status={analysis.legality.status} label={analysis.legality.label} /> : null}
               </div>
             </div>
             <ScoreRing score={score.score} size={56} />
           </CardHeader>
           <CardContent>
             {result.available ? (
-              <dl className="grid grid-cols-3 gap-x-3 gap-y-3">
+              <dl className="grid grid-cols-3 gap-x-3 gap-y-3 sm:grid-cols-6">
                 {[
                   ["Monthly cash flow", `${usd(result.monthly_cash_flow)}`, signTone(result.monthly_cash_flow)],
                   ["Cash-on-cash", pct(result.cash_on_cash_pct, 2), signTone(result.cash_on_cash_pct)],
@@ -131,114 +87,13 @@ export function HeadlineMetrics({ analysis }: { analysis: PropertyAnalysis }) {
   );
 }
 
-// ----------------------------------------------------------------------------- side-by-side comparison
-
-export function StrategyComparisonTable({ analysis }: { analysis: PropertyAnalysis }) {
-  const { long_term: l, short_term: s } = analysis;
-  type Row = { label: string; hint?: string; ltr: React.ReactNode; str: React.ReactNode; better?: "higher" | "lower"; lv?: number | null; sv?: number | null; group?: string };
-  const m = (r: StrategyResult, value: number | null | undefined, fmt: (v: number | null | undefined) => string) => (r.available ? fmt(value) : "—");
-  const rows: Row[] = [
-    { group: "Gross", label: "Gross annual revenue", ltr: m(l, l.gross_annual_income, usd), str: m(s, s.gross_annual_income, usd), better: "higher", lv: l.gross_annual_income, sv: s.gross_annual_income },
-    { label: "Gross yield", hint: "Annual gross rental income ÷ purchase price", ltr: m(l, l.gross_yield_pct, (v) => pct(v, 2)), str: m(s, s.gross_yield_pct, (v) => pct(v, 2)), better: "higher", lv: l.gross_yield_pct, sv: s.gross_yield_pct },
-    { group: "Operating (before financing)", label: "Vacancy loss", ltr: m(l, l.vacancy_loss, usd), str: s.available ? "In occupancy rate" : "—" },
-    { label: "Operating expenses", hint: "Excludes mortgage payments, depreciation and income taxes", ltr: m(l, l.operating_expenses_annual, usd), str: m(s, s.operating_expenses_annual, usd), better: "lower", lv: l.operating_expenses_annual, sv: s.operating_expenses_annual },
-    { label: "Net operating income (NOI)", hint: "Effective gross income − operating expenses", ltr: m(l, l.noi_annual, usd), str: m(s, s.noi_annual, usd), better: "higher", lv: l.noi_annual, sv: s.noi_annual },
-    { label: "Cap rate", hint: "NOI ÷ purchase price", ltr: m(l, l.cap_rate_pct, (v) => pct(v, 2)), str: m(s, s.cap_rate_pct, (v) => pct(v, 2)), better: "higher", lv: l.cap_rate_pct, sv: s.cap_rate_pct },
-    { label: "Net yield", hint: "NOI ÷ total acquisition basis (price + closing, renovation, furnishing…)", ltr: m(l, l.net_yield_pct, (v) => pct(v, 2)), str: m(s, s.net_yield_pct, (v) => pct(v, 2)), better: "higher", lv: l.net_yield_pct, sv: s.net_yield_pct },
-    { group: "Leveraged (after financing)", label: "Annual debt service", hint: "Principal + interest + PMI", ltr: m(l, l.annual_debt_service, usd), str: m(s, s.annual_debt_service, usd) },
-    { label: "Monthly cash flow", hint: "(NOI − debt service) ÷ 12", ltr: m(l, l.monthly_cash_flow, usd), str: m(s, s.monthly_cash_flow, usd), better: "higher", lv: l.monthly_cash_flow, sv: s.monthly_cash_flow },
-    { label: "Cash-on-cash return", hint: "Annual pre-tax cash flow ÷ total cash invested", ltr: m(l, l.cash_on_cash_pct, (v) => pct(v, 2)), str: m(s, s.cash_on_cash_pct, (v) => pct(v, 2)), better: "higher", lv: l.cash_on_cash_pct, sv: s.cash_on_cash_pct },
-    { label: "DSCR", hint: "NOI ÷ annual debt service. Not applicable to cash purchases.", ltr: l.available ? (l.dscr != null ? ratio(l.dscr) : "N/A") : "—", str: s.available ? (s.dscr != null ? ratio(s.dscr) : "N/A") : "—", better: "higher", lv: l.dscr, sv: s.dscr },
-    { label: "Initial cash required", ltr: m(l, l.total_cash_invested, usd), str: m(s, s.total_cash_invested, usd), better: "lower", lv: l.total_cash_invested, sv: s.total_cash_invested },
-    { label: "Break-even occupancy", hint: "Occupancy needed to cover operating costs and financing", ltr: m(l, l.break_even_occupancy_pct, (v) => pct(v, 1)), str: m(s, s.break_even_occupancy_pct, (v) => pct(v, 1)), better: "lower", lv: l.break_even_occupancy_pct, sv: s.break_even_occupancy_pct },
-    { group: "Risk", label: "Regulatory risk", ltr: analysis.recommendation.regulatory_risk_ltr, str: analysis.recommendation.regulatory_risk_str || "—" },
-    { label: "Investment score", ltr: analysis.score_ltr.score != null ? analysis.score_ltr.score.toFixed(0) : "Unranked", str: analysis.score_str.score != null ? analysis.score_str.score.toFixed(0) : "Unranked", better: "higher", lv: analysis.score_ltr.score, sv: analysis.score_str.score },
-  ];
-  const winner = (row: Row): Strategy | null => {
-    if (!row.better || !l.available || !s.available || row.lv == null || row.sv == null || row.lv === row.sv) return null;
-    return (row.better === "higher" ? row.lv > row.sv : row.lv < row.sv) ? "ltr" : "str";
-  };
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Long-term vs short-term rental</CardTitle>
-        <CardDescription>Both strategies are calculated independently with the same purchase and financing assumptions. The stronger value on each row is marked.</CardDescription>
-      </CardHeader>
-      <CardContent className="px-0 pb-0">
-        <Table data-testid="strategy-comparison">
-          <thead>
-            <tr>
-              <Th className="pl-5">Metric</Th>
-              <Th className="text-right">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="size-2 rounded-full" style={{ backgroundColor: SERIES.ltr }} aria-hidden /> Long-term rental
-                </span>
-              </Th>
-              <Th className="pr-5 text-right">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="size-2 rounded-full" style={{ backgroundColor: SERIES.str }} aria-hidden /> Short-term rental
-                </span>
-              </Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const best = winner(row);
-              const cell = (key: Strategy, content: React.ReactNode) => (
-                <Td className={cn("tnum text-right", key === "str" && "pr-5", row.group === "Risk" && row.label === "Regulatory risk" && "max-w-[240px] whitespace-normal text-left text-xs font-normal text-muted-foreground sm:text-right", best === key && "font-semibold")}>
-                  <span className="inline-flex items-center justify-end gap-1.5">
-                    {best === key ? <CheckCircle2 className="size-3.5 text-positive" aria-label="Stronger" /> : null}
-                    {content}
-                  </span>
-                </Td>
-              );
-              return (
-                <React.Fragment key={row.label}>
-                  {row.group ? (
-                    <tr>
-                      <td colSpan={3} className="border-b bg-muted/30 px-5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {row.group}
-                      </td>
-                    </tr>
-                  ) : null}
-                  <tr>
-                    <Td className="pl-5">
-                      {row.hint ? (
-                        <Hint content={row.hint}>
-                          <span className="underline decoration-dotted underline-offset-2" tabIndex={0}>
-                            {row.label}
-                          </span>
-                        </Hint>
-                      ) : (
-                        row.label
-                      )}
-                    </Td>
-                    {cell("ltr", row.ltr)}
-                    {cell("str", row.str)}
-                  </tr>
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-}
-
 // ----------------------------------------------------------------------------- financial model per strategy
 
 export function FinancialModel({ analysis, strategy }: { analysis: PropertyAnalysis; strategy: Strategy }) {
   const result = strategy === "ltr" ? analysis.long_term : analysis.short_term;
   if (!result.available) return <Unavailable result={result} />;
-  const detail = result.str_detail;
   const statement: [string, number | null | undefined, string?][] = [
-    ...(detail
-      ? ([
-          ["Accommodation revenue", detail.accommodation_revenue],
-          ["Cleaning fees collected", detail.cleaning_fee_revenue],
-        ] as [string, number][])
-      : ([["Gross scheduled rent & other income", result.gross_annual_income]] as [string, number | null | undefined][])),
+    ["Gross scheduled rent & other income", result.gross_annual_income],
     ...(result.vacancy_loss ? ([["Vacancy loss", -result.vacancy_loss]] as [string, number][]) : []),
     ["Effective gross income", result.effective_gross_income, "total"],
     ["Operating expenses", -(result.operating_expenses_annual ?? 0)],
@@ -340,39 +195,6 @@ export function FinancialModel({ analysis, strategy }: { analysis: PropertyAnaly
 
       <MortgageCard analysis={analysis} />
 
-      {detail ? (
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <CardTitle>Short-term rental operations</CardTitle>
-            <CardDescription>
-              Accommodation revenue = average daily rate × booked nights. Booked nights = available nights × occupancy{detail.nights_capped_by_regulation ? ", limited by the legal night cap" : ""}.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 self-start">
-              {[
-                ["Average daily rate", usd(detail.adr, { cents: true })],
-                ["Occupancy (available nights)", pct(detail.available_occupancy_pct)],
-                ["Occupancy (calendar nights)", pct(detail.calendar_occupancy_pct)],
-                ["Nights available / yr", num(detail.available_nights)],
-                ["Nights booked / yr", num(detail.booked_nights, 0)],
-                ["Guest stays / yr", num(detail.turnovers, 0)],
-                ["RevPAR (per calendar night)", usd(detail.revpar, { cents: true })],
-                ["Cleaning fees collected", usd(detail.cleaning_fee_revenue)],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <dt className="text-[11px] text-muted-foreground">{label}</dt>
-                  <dd className="tnum text-sm font-semibold">{value}</dd>
-                </div>
-              ))}
-            </dl>
-            <div>
-              <p className="mb-1 text-xs font-medium text-muted-foreground">Projected gross revenue by month (seasonality)</p>
-              <SeasonalityChart result={result} />
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
     </div>
   );
 }
@@ -927,33 +749,10 @@ function ScoreBreakdown({ score, title }: { score: InvestmentScore; title: strin
 }
 
 export function RiskSection({ analysis }: { analysis: PropertyAnalysis }) {
-  const legality = analysis.legality;
-  const tone = legality.status === "permitted" ? "success" : legality.status === "prohibited" ? "error" : "warning";
   return (
-    <div className="space-y-4">
-      <Alert tone={tone} title={`Short-term rental legality: ${legality.label}`}>
-        {legality.verified ? (
-          <>
-            {legality.summary ?? `Recorded as ${legality.status}.`}
-            {legality.jurisdiction ? ` Jurisdiction: ${legality.jurisdiction}.` : ""}
-            {legality.verified_at ? ` Verified ${shortDate(legality.verified_at)}.` : ""}
-            {legality.max_nights_per_year != null ? ` Night cap: ${legality.max_nights_per_year} per year.` : ""}{" "}
-            {legality.source_url ? (
-              <a href={legality.source_url} target="_blank" rel="noopener noreferrer">
-                Source
-              </a>
-            ) : null}
-          </>
-        ) : (
-          "Local short-term rental rules have not been verified for this location. Nearby Airbnb listings are not evidence that operating one is legal — check zoning, permit, tax and HOA rules before relying on short-term income."
-        )}
-      </Alert>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <QualityCard quality={analysis.quality_ltr} title="Long-term rental data quality" />
-        <QualityCard quality={analysis.quality_str} title="Short-term rental data quality" />
-        <ScoreBreakdown score={analysis.score_ltr} title="Long-term investment score" />
-        <ScoreBreakdown score={analysis.score_str} title="Short-term investment score" />
-      </div>
+    <div className="grid gap-4 xl:grid-cols-2">
+      <QualityCard quality={analysis.quality_ltr} title="Data quality" />
+      <ScoreBreakdown score={analysis.score_ltr} title="Investment score" />
     </div>
   );
 }
@@ -1035,7 +834,7 @@ export function AISection({ body, analysisKey }: { body: AnalysisBody; analysisK
                 {explanation.cash_flow}
               </p>
               <p>
-                <span className="font-semibold">Long-term vs short-term. </span>
+                <span className="font-semibold">Rental outlook. </span>
                 {explanation.strategy_comparison}
               </p>
               <p>

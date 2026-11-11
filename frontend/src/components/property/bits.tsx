@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Ban, CheckCircle2, CircleHelp, ShieldAlert } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/card";
 import { Hint } from "@/components/ui/overlays";
 import type { Badge as BadgeData, Confidence, Provenance } from "@/lib/types";
@@ -91,23 +91,6 @@ export function ProvenanceLegend() {
         </span>
       ))}
     </div>
-  );
-}
-
-const LEGALITY = {
-  permitted: { tone: "positive", Icon: CheckCircle2 },
-  restricted: { tone: "warning", Icon: ShieldAlert },
-  prohibited: { tone: "negative", Icon: Ban },
-  unknown: { tone: "outline", Icon: CircleHelp },
-} as const;
-
-export function LegalityBadge({ status, label }: { status: string; label: string }) {
-  const meta = LEGALITY[(status as keyof typeof LEGALITY) in LEGALITY ? (status as keyof typeof LEGALITY) : "unknown"];
-  return (
-    <Badge tone={meta.tone}>
-      <meta.Icon className="size-3" aria-hidden />
-      STR: {label}
-    </Badge>
   );
 }
 

@@ -47,15 +47,15 @@ export function DataSourcesCard() {
               Create a RentCast API key and set <code className="rounded bg-card px-1">RENTCAST_API_KEY</code> on the API and worker services (keep <code className="rounded bg-card px-1">DATA_MODE=auto</code> or set it to <code className="rounded bg-card px-1">live</code>).
             </li>
             <li>
-              Optional: <code className="rounded bg-card px-1">AIRDNA_API_KEY</code> for short-term rental estimates, <code className="rounded bg-card px-1">MAPBOX_ACCESS_TOKEN</code> for radius/county searches and{" "}
+              Optional: <code className="rounded bg-card px-1">MAPBOX_ACCESS_TOKEN</code> for radius/county searches and{" "}
               <code className="rounded bg-card px-1">MAPBOX_PUBLIC_TOKEN</code> for the map, <code className="rounded bg-card px-1">ANTHROPIC_API_KEY</code> for AI analysis.
             </li>
             <li>Restart the services and set monthly budgets below. See docs/DATA_PROVIDERS.md for details and provider terms.</li>
           </ol>
         </div>
         <p className="text-xs text-muted-foreground">
-          Cached data is reused for: listings {status.freshness.listing_cache_hours} h · rent estimates {status.freshness.rent_estimate_days} days · STR estimates {status.freshness.str_estimate_days} days · market
-          statistics {status.freshness.market_stats_days} days. Premium estimates are requested for the top {status.limits.rent_avm_top_n} (rent) and {status.limits.str_estimate_top_n} (STR) candidates per search, or on
+          Cached data is reused for: listings {status.freshness.listing_cache_hours} h · rent estimates {status.freshness.rent_estimate_days} days · market
+          statistics {status.freshness.market_stats_days} days. Premium estimates are requested for the top {status.limits.rent_avm_top_n} candidates per search, or on
           demand from a property&apos;s analysis page.
         </p>
       </CardContent>

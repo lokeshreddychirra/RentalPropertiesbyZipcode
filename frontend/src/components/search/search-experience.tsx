@@ -151,8 +151,7 @@ function ResultsTable({ cards, strategy }: { cards: CardData[]; strategy: Strate
             <Th>Property</Th>
             <Th className="text-right">Score</Th>
             <Th className="text-right">Price</Th>
-            <Th>Basis</Th>
-            <Th className="text-right">Income / mo</Th>
+            <Th className="text-right">Rent / mo</Th>
             <Th className="text-right">Gross yield</Th>
             <Th className="text-right">Cap rate</Th>
             <Th className="text-right">Cash flow / mo</Th>
@@ -164,7 +163,7 @@ function ResultsTable({ cards, strategy }: { cards: CardData[]; strategy: Strate
         </thead>
         <tbody>
           {cards.map((card) => {
-            const { key, summary } = viewOf(card, strategy);
+            const { summary } = viewOf(card, strategy);
             const ok = !!summary?.available;
             return (
               <tr key={card.id} className="hover:bg-muted/40">
@@ -181,11 +180,10 @@ function ResultsTable({ cards, strategy }: { cards: CardData[]; strategy: Strate
                 </Td>
                 <Td className="text-right">
                   <div className="flex justify-end">
-                    <ScoreRing score={strategy === "both" ? card.score : (summary?.score ?? null)} size={34} />
+                    <ScoreRing score={card.score ?? summary?.score ?? null} size={34} />
                   </div>
                 </Td>
                 <Td className="tnum text-right font-medium">{usd(card.price)}</Td>
-                <Td className="text-xs text-muted-foreground">{key === "str" ? "Short-term" : key === "ltr" ? "Long-term" : "—"}</Td>
                 <Td className="tnum text-right">{ok ? usd(summary?.monthly_income) : "—"}</Td>
                 <Td className="tnum text-right">{ok ? pct(summary?.gross_yield_pct) : "—"}</Td>
                 <Td className="tnum text-right">{ok ? pct(summary?.cap_rate_pct) : "—"}</Td>
@@ -194,7 +192,7 @@ function ResultsTable({ cards, strategy }: { cards: CardData[]; strategy: Strate
                 <Td className="tnum text-right">{ok ? (summary?.dscr != null ? ratio(summary.dscr) : "N/A") : "—"}</Td>
                 <Td className="tnum text-right">{ok ? usd(summary?.total_cash_invested) : usd(card.upfront_cash)}</Td>
                 <Td>
-                  <ConfidenceBadge level={strategy === "both" ? card.confidence : (summary?.confidence ?? "insufficient")} short />
+                  <ConfidenceBadge level={card.confidence} short />
                 </Td>
               </tr>
             );

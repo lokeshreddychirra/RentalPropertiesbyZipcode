@@ -8,7 +8,7 @@ import { Field, Input, NumberInput, Select } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
 import { EMPTY_FORM, filtersToForm, formToFilters, parseZips, type FilterForm } from "@/lib/filters";
 import { useStatus } from "@/lib/store";
-import type { SearchFilters, StrategyFilter } from "@/lib/types";
+import type { SearchFilters } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const PROPERTY_TYPES: { value: string; label: string }[] = [
@@ -19,11 +19,6 @@ const PROPERTY_TYPES: { value: string; label: string }[] = [
   { value: "manufactured", label: "Manufactured" },
 ];
 
-const STRATEGIES: { value: StrategyFilter; label: string; short: string }[] = [
-  { value: "both", label: "Both strategies", short: "Both strategies" },
-  { value: "ltr", label: "Long-term rental", short: "Long-term" },
-  { value: "str", label: "Short-term rental", short: "Short-term" },
-];
 
 const money = (v: number) => (v >= 1_000_000 ? `$${+(v / 1_000_000).toFixed(2)}M` : v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`);
 
@@ -136,7 +131,6 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
   const returnsCount = [form.minGrossYield, form.minCashFlow, form.minCashOnCash, form.minCapRate, form.minNetYield].filter((v) => v != null).length;
   const moreCount = [form.maxHoa, form.maxDom].filter((v) => v != null).length;
   const types = form.propertyTypes;
-  const strategy = STRATEGIES.find((s) => s.value === form.strategy) ?? STRATEGIES[0];
 
   return (
     <Card>
@@ -169,23 +163,6 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <FilterButton
-            label="Strategy"
-            active={form.strategy !== "both" ? strategy.short : null}
-            onApply={() => apply()}
-            onClear={() => apply({ strategy: "both" })}
-            width="w-60"
-          >
-            <div className="space-y-1" role="radiogroup" aria-label="Rental strategy">
-              {STRATEGIES.map((option) => (
-                <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted">
-                  <input type="radio" name="strategy" checked={form.strategy === option.value} onChange={() => set("strategy", option.value)} className="accent-[hsl(var(--primary))]" />
-                  {option.label}
-                </label>
-              ))}
-            </div>
-          </FilterButton>
-
           <FilterButton
             label="Price"
             active={rangeLabel(form.minPrice, form.maxPrice, money)}
@@ -295,7 +272,7 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
                 <NumberInput id="f-net" suffix="%" placeholder="Any" value={form.minNetYield} onValueChange={(v) => set("minNetYield", v)} />
               </Field>
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">Calculated with 25% down at 7% (default financing) on each property’s recommended strategy.</p>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">Calculated with 25% down at 7% (default financing) as a long-term rental.</p>
           </FilterButton>
 
           <FilterButton

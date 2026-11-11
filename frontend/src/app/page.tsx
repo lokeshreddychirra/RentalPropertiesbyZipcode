@@ -19,19 +19,19 @@ interface Starter {
 }
 
 const LIVE_STARTERS: Starter[] = [
-  { label: "Memphis, TN", sub: "ZIP 38116 · high-yield market", filters: { zip_codes: ["38116"], strategy: "both" } },
-  { label: "Peachtree City, GA", sub: "ZIP 30269 · suburban", filters: { zip_codes: ["30269"], strategy: "both" } },
-  { label: "Indianapolis, IN", sub: "ZIP 46201 · cash-flow market", filters: { zip_codes: ["46201"], strategy: "both" } },
+  { label: "Memphis, TN", sub: "ZIP 38116 · high-yield market", filters: { zip_codes: ["38116"], strategy: "ltr" } },
+  { label: "Peachtree City, GA", sub: "ZIP 30269 · suburban", filters: { zip_codes: ["30269"], strategy: "ltr" } },
+  { label: "Indianapolis, IN", sub: "ZIP 46201 · cash-flow market", filters: { zip_codes: ["46201"], strategy: "ltr" } },
 ];
 
 const DEMO_STARTERS: Starter[] = [
-  { label: "Atlanta, GA", sub: "ZIP 30310 · gross yield ≥ 8%", filters: { zip_codes: ["30310"], min_gross_yield: 8, strategy: "both" } },
-  { label: "Peachtree City, GA", sub: "ZIP 30269 · best cash-on-cash", filters: { zip_codes: ["30269"], strategy: "both" }, sort: "cash_on_cash" },
+  { label: "Atlanta, GA", sub: "ZIP 30310 · gross yield ≥ 8%", filters: { zip_codes: ["30310"], min_gross_yield: 8, strategy: "ltr" } },
+  { label: "Peachtree City, GA", sub: "ZIP 30269 · best cash-on-cash", filters: { zip_codes: ["30269"], strategy: "ltr" }, sort: "cash_on_cash" },
   { label: "Memphis, TN", sub: "ZIP 38116 · positive cash flow", filters: { zip_codes: ["38116"], min_cash_flow: 1, strategy: "ltr" }, sort: "cash_flow" },
 ];
 
 const PRINCIPLES: [string, string][] = [
-  ["Every listing, both strategies", "Each home is modelled as a long-term and a short-term rental, and the stronger feasible one is recommended."],
+  ["Every listing in the ZIP", "Each home for sale is modelled as a long-term rental with rent, expenses and financing."],
   ["Ranked by real returns", "Cash flow, cap rate and cash-on-cash are calculated with financing — not guessed from price or rent alone."],
   ["Honest about data", "Every figure is labelled as sourced, estimated or default, with a confidence rating."],
 ];

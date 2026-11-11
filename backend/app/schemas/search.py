@@ -34,7 +34,6 @@ SORT_LABELS: dict[str, str] = {
     "upfront": "Lowest upfront investment",
     "dscr": "Highest DSCR",
     "ltr_return": "Best long-term rental return",
-    "str_return": "Best short-term rental return",
     "price_asc": "Lowest price",
     "price_desc": "Highest price",
     "newest": "Newest listings",
@@ -67,7 +66,13 @@ class SearchFilters(BaseModel):
     max_days_on_market: Annotated[int, Field(ge=0, le=3650)] | None = None
     min_year_built: Annotated[int, Field(ge=1700, le=2100)] | None = None
     max_year_built: Annotated[int, Field(ge=1700, le=2100)] | None = None
-    strategy: Literal["ltr", "str", "both"] = "both"
+    # Long-term rental only. Older saved searches may still say "str"/"both"; they are read as "ltr".
+    strategy: Literal["ltr", "str", "both"] = "ltr"
+
+    @field_validator("strategy", mode="after")
+    @classmethod
+    def _long_term_only(cls, value: str) -> str:
+        return "ltr"
 
     @field_validator("zip_codes", mode="before")
     @classmethod

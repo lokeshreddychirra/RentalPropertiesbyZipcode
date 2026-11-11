@@ -19,11 +19,8 @@ import {
   ForecastSection,
   Freshness,
   HeadlineMetrics,
-  RecommendationCard,
   RiskSection,
   ScenarioSection,
-  StrategyComparisonTable,
-  StrategyToggle,
   type CustomLoan,
 } from "@/components/property/sections";
 import { CompareTray } from "@/components/search/search-experience";
@@ -164,7 +161,6 @@ export default function PropertyPage() {
 
   const [overrides, setOverrides] = React.useState<AssumptionOverrides>({});
   const [customLoans, setCustomLoans] = React.useState<CustomLoan[]>([]);
-  const [strategy, setStrategy] = React.useState<Strategy | null>(null);
   const [tab, setTab] = React.useState("overview");
   const debouncedOverrides = useDebounced(overrides, 250);
 
@@ -173,19 +169,17 @@ export default function PropertyPage() {
 
   // Opening the analysis is a request for detail: fetch the property-level rent estimate.
   const rent = useQuery({ queryKey: ["rent-estimate", id], queryFn: () => api.rentEstimate(id, true), enabled: !!ctx, staleTime: 5 * 60_000, retry: false });
-  // Value and STR estimates are premium calls: automatic in demo mode, on request with live providers.
+  // Value estimates are premium calls: automatic in demo mode, on request with live providers.
   const [wantValue, setWantValue] = React.useState(false);
-  const [wantStr, setWantStr] = React.useState(false);
   const value = useQuery({ queryKey: ["value-estimate", id, wantValue || isDemoMode], queryFn: () => api.valueEstimate(id, wantValue || !!isDemoMode), enabled: !!ctx && !!status, staleTime: 5 * 60_000, retry: false });
-  const strEstimate = useQuery({ queryKey: ["str-estimate", id, wantStr || isDemoMode], queryFn: () => api.strEstimate(id, wantStr || !!isDemoMode), enabled: !!ctx && !!status, staleTime: 5 * 60_000, retry: false });
 
   // New estimates change the analysis inputs: refresh dependent data once they arrive.
-  const estimateStamp = `${rent.data?.fetched_at ?? ""}|${value.data?.fetched_at ?? ""}|${strEstimate.data?.fetched_at ?? ""}`;
+  const estimateStamp = `${rent.data?.fetched_at ?? ""}|${value.data?.fetched_at ?? ""}`;
   React.useEffect(() => {
-    if (rent.data?.fetched_now || value.data?.fetched_now || strEstimate.data?.fetched_now) {
+    if (rent.data?.fetched_now || value.data?.fetched_now) {
       void client.invalidateQueries({ queryKey: ["property", id] });
     }
-  }, [estimateStamp, rent.data?.fetched_now, value.data?.fetched_now, strEstimate.data?.fetched_now, client, id]);
+  }, [estimateStamp, rent.data?.fetched_now, value.data?.fetched_now, client, id]);
 
   const body: AnalysisBody = React.useMemo(
     () => ({ property_id: id, overrides: debouncedOverrides, defaults: defaultsOrNull, weights, include: INCLUDE, custom_financing: customLoans.map(({ name, down_payment_pct, interest_rate_pct, loan_term_years }) => ({ name, down_payment_pct, interest_rate_pct, loan_term_years })) }),
@@ -200,7 +194,7 @@ export default function PropertyPage() {
     retry: false,
   });
   const analysis = analysisQuery.data;
-  const activeStrategy: Strategy = strategy ?? analysis?.primary_strategy ?? "ltr";
+  const activeStrategy: Strategy = "ltr";
   const pending = analysisQuery.isFetching || debouncedOverrides !== overrides;
 
   // Signed-in users: financing scenarios are saved to the account and restored here.
@@ -250,7 +244,7 @@ export default function PropertyPage() {
     const notFound = detail.error instanceof ApiError && detail.error.status === 404;
     return (
       <div className="mx-auto max-w-2xl px-4 py-16">
-        <EmptyState title={notFound ? "Property not found" : "This property could not be loaded"} action={<Button asChild><Link href="/search">Back to search</Link></Button>}>
+        <EmptyState title={notFound ? "Property not found" : "This property could not be loaded"} action={<Button asChild><Link href="/">Back to search</Link></Button>}>
           {notFound ? "It may have been removed, or the link is from a different data mode (demo vs live)." : errorMessage(detail.error)}
         </EmptyState>
       </div>
@@ -284,7 +278,7 @@ export default function PropertyPage() {
 
   return (
     <div className="mx-auto max-w-[1440px] px-4 py-5 pb-24 lg:px-6">
-      <Link href="/search" className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground" onClick={(event) => { if (window.history.length > 1) { event.preventDefault(); window.history.back(); } }}>
+      <Link href="/" className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground" onClick={(event) => { if (window.history.length > 1) { event.preventDefault(); window.history.back(); } }}>
         <ArrowLeft className="size-4" aria-hidden /> Back to results
       </Link>
 
@@ -366,7 +360,6 @@ export default function PropertyPage() {
               {analysisError}
             </Alert>
           ) : null}
-          {analysis ? <RecommendationCard analysis={analysis} /> : <Skeleton className="h-20 w-full" />}
           {analysis ? <div className={cn(pending && "opacity-70 transition-opacity")}><HeadlineMetrics analysis={analysis} /></div> : <Skeleton className="h-56 w-full" />}
 
           <Tabs value={tab} onValueChange={setTab}>
@@ -383,7 +376,6 @@ export default function PropertyPage() {
                   <TabsTrigger value="comps">Comparables</TabsTrigger>
                 </TabsList>
               </div>
-              {analysis && ["financials", "forecast", "financing", "scenarios"].includes(tab) ? <StrategyToggle value={activeStrategy} onChange={setStrategy} analysis={analysis} /> : null}
             </div>
 
             <TabsContent value="overview" className="space-y-5">
@@ -415,15 +407,13 @@ export default function PropertyPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Investment returns</CardTitle>
-                    <CardDescription>Gross, operating and leveraged returns for each strategy under your assumptions.</CardDescription>
+                    <CardDescription>Gross, operating and leveraged returns under your assumptions.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ReturnComparisonChart analysis={analysis} />
                   </CardContent>
                 </Card>
               ) : null}
-
-              {analysis ? <StrategyComparisonTable analysis={analysis} /> : null}
 
               <Card>
                 <CardHeader>
@@ -518,45 +508,6 @@ export default function PropertyPage() {
                         {rent.data?.reason ?? "No reliable estimate could be retrieved."} Enter a monthly rent under Assumptions to model the long-term rental scenario.
                       </Alert>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Short-term rental estimate</CardTitle>
-                  <CardDescription>{strEstimate.data?.available ? <Freshness provider={strEstimate.data.provider} fetchedAt={strEstimate.data.fetched_at} demo={strEstimate.data.is_demo} /> : "Nightly rate and occupancy from a short-term rental analytics provider."}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {strEstimate.isLoading ? (
-                    <Skeleton className="h-20 w-full" />
-                  ) : strEstimate.data?.available ? (
-                    <dl className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-                      {[
-                        ["Average daily rate", usd(strEstimate.data.adr, { cents: true })],
-                        ["Occupancy", pct(strEstimate.data.occupancy_pct)],
-                        ["Provider annual revenue", usd(strEstimate.data.annual_revenue)],
-                        ["Average stay", strEstimate.data.avg_stay_nights ? `${strEstimate.data.avg_stay_nights} nights` : "—"],
-                        ["Comparable listings", String(strEstimate.data.comp_count)],
-                      ].map(([label, v]) => (
-                        <div key={label}>
-                          <dt className="text-[11px] text-muted-foreground">{label}</dt>
-                          <dd className="tnum text-lg font-semibold">{v}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  ) : (
-                    <Alert tone="warning" title="Short-term rental estimate unavailable">
-                      {strEstimate.data?.reason}
-                      {strEstimate.data?.can_request ? (
-                        <>
-                          {" "}
-                          <button type="button" className="font-medium underline" onClick={() => setWantStr(true)}>
-                            Request an estimate (uses one provider credit)
-                          </button>
-                        </>
-                      ) : null}
-                    </Alert>
                   )}
                 </CardContent>
               </Card>

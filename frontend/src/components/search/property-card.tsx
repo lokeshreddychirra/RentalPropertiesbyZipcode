@@ -13,11 +13,9 @@ import { cn, num, pct, relativeTime, signTone, titleCase, usd } from "@/lib/util
 
 /** The strategy whose numbers headline a card, matching the server's ranking rule. */
 export function viewOf(card: CardData, strategy: StrategyFilter): { key: "ltr" | "str" | null; summary: StrategySummary | null } {
-  if (strategy === "ltr") return { key: "ltr", summary: card.long_term };
-  if (strategy === "str") return { key: "str", summary: card.short_term };
-  if (card.primary_strategy === "str") return { key: "str", summary: card.short_term };
-  if (card.primary_strategy === "ltr") return { key: "ltr", summary: card.long_term };
-  return { key: null, summary: null };
+  // Long-term rental only.
+  void strategy;
+  return { key: "ltr", summary: card.long_term };
 }
 
 const RENT_SOURCE_NOTE: Record<string, string> = {
@@ -38,13 +36,12 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
   const { toggleCompare, isCompared } = useApp();
   const favorites = useFavoriteIds();
   const { user } = useSession();
-  const { key, summary } = viewOf(card, strategy);
+  const { summary } = viewOf(card, strategy);
   const available = !!summary?.available;
-  const score = strategy === "both" ? card.score : (summary?.score ?? null);
+  const score = card.score ?? summary?.score ?? null;
   const compared = isCompared(card.id);
   const saved = favorites.ids.has(card.id);
   const href = `/properties/${card.id}`;
-  const strategyLabel = key === "str" ? "Short-term" : "Long-term";
 
   return (
     <Card
@@ -65,7 +62,7 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
         <div>
           <div className="flex items-start justify-between gap-2">
             <p className="tnum text-xl font-semibold leading-none tracking-tight">{usd(card.price)}</p>
-            <ConfidenceBadge level={strategy === "both" ? card.confidence : (summary?.confidence ?? "insufficient")} short />
+            <ConfidenceBadge level={card.confidence} short />
           </div>
           <Link href={href} className="mt-1.5 block truncate text-sm font-medium hover:underline" title={card.formatted_address}>
             {card.address_line1 ?? card.formatted_address}
@@ -89,33 +86,32 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
 
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-md bg-muted/50 p-2.5">
           <Metric
-            label="Long-term rent"
+            label="Monthly rent"
             value={card.long_term.available ? `${usd(card.long_term.monthly_income)}/mo` : "Unavailable"}
             tone={card.long_term.available ? undefined : "text-muted-foreground font-medium"}
             hint={RENT_SOURCE_NOTE[card.rent_source]}
             sub={card.rent_source === "market_zip" ? "ZIP-level estimate" : card.rent_source === "property_avm" ? "Property estimate" : undefined}
           />
           <Metric
-            label="Short-term revenue"
-            value={card.short_term.available ? `${usd(card.short_term.monthly_income)}/mo` : "Unavailable"}
-            tone={card.short_term.available ? undefined : "text-muted-foreground font-medium"}
-            hint={card.short_term.available ? "Estimated gross short-term rental revenue per month (before costs)" : "No short-term rental estimate. Open the analysis to request one or enter your own nightly rate."}
-            sub={card.legality_status !== "permitted" ? `STR: ${card.legality_label.toLowerCase()}` : "STR permitted"}
+            label="Price per sqft"
+            value={card.price && card.square_feet ? usd(card.price / card.square_feet) : "—"}
+            hint="List price ÷ living area"
+            sub={card.square_feet ? `${card.square_feet.toLocaleString()} sqft` : undefined}
           />
         </dl>
 
         {available && summary ? (
           <dl className="grid grid-cols-3 gap-x-3 gap-y-2">
-            <Metric label="Gross yield" value={pct(summary.gross_yield_pct)} hint={`${strategyLabel} annual gross income ÷ price`} />
+            <Metric label="Gross yield" value={pct(summary.gross_yield_pct)} hint="Annual rent ÷ price" />
             <Metric label="Cap rate" value={pct(summary.cap_rate_pct)} hint="Net operating income ÷ price (before financing)" />
             <Metric label="Cash-on-cash" value={pct(summary.cash_on_cash_pct)} tone={signTone(summary.cash_on_cash_pct)} hint="Annual pre-tax cash flow ÷ total cash invested" />
             <Metric label="Cash flow" value={`${usd(summary.monthly_cash_flow)}/mo`} tone={signTone(summary.monthly_cash_flow)} hint="After operating expenses and debt service" />
             <Metric label="Upfront cash" value={usd(summary.total_cash_invested)} hint="Down payment, closing, reserves and set-up costs" />
-            <Metric label="Based on" value={key === "str" ? "STR" : "LTR"} hint={`Metrics shown for the ${strategyLabel.toLowerCase()} rental scenario. ${card.recommendation}`} sub={card.recommendation_conditional ? "Verify STR rules" : undefined} />
+            <Metric label="DSCR" value={summary.dscr != null ? `${Number(summary.dscr).toFixed(2)}×` : "N/A"} hint="Net operating income ÷ annual mortgage payments (1.25× or more is comfortable)" />
           </dl>
         ) : (
           <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-            Returns can&apos;t be calculated yet — no {strategy === "str" ? "short-term rental" : "rental income"} estimate is available. Open the analysis to request one or enter
+            Returns can&apos;t be calculated yet — no rent estimate is available. Open the analysis to request one or enter
             your own.
           </p>
         )}

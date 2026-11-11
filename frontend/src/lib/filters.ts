@@ -42,7 +42,7 @@ export const EMPTY_FORM: FilterForm = {
   maxDom: null,
   minYear: null,
   maxYear: null,
-  strategy: "both",
+  strategy: "ltr",
   polygon: null,
 };
 
@@ -61,7 +61,6 @@ export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "upfront", label: "Lowest upfront investment" },
   { value: "dscr", label: "Highest DSCR" },
   { value: "ltr_return", label: "Best long-term rental return" },
-  { value: "str_return", label: "Best short-term rental return" },
   { value: "price_asc", label: "Lowest price" },
   { value: "price_desc", label: "Highest price" },
   { value: "newest", label: "Newest listings" },
@@ -177,7 +176,7 @@ export function filtersToForm(filters: Partial<SearchFilters> | null | undefined
     maxDom: n(filters.max_days_on_market),
     minYear: n(filters.min_year_built),
     maxYear: n(filters.max_year_built),
-    strategy: (filters.strategy as StrategyFilter) ?? "both",
+    strategy: "ltr" as StrategyFilter,
     polygon: (filters.polygon as [number, number][] | null | undefined) ?? null,
   };
 }
@@ -212,7 +211,7 @@ export function searchHref(filters: SearchFilters, extra: { sort?: string; view?
   params.set("f", JSON.stringify(filters));
   if (extra.sort) params.set("sort", extra.sort);
   if (extra.view) params.set("view", extra.view);
-  return `${extra.base ?? "/search"}?${params.toString()}`;
+  return `${extra.base ?? "/"}?${params.toString()}`;
 }
 
 /** One-line human summary of a filter set (for saved searches and headings). */
@@ -235,6 +234,5 @@ export function describeFilters(filters: Partial<SearchFilters>): string {
   if (filters.min_cash_flow != null) parts.push(`cash flow ≥ ${money(filters.min_cash_flow)}/mo`);
   if (filters.min_beds != null || filters.max_beds != null) parts.push(`${filters.min_beds ?? 0}–${filters.max_beds ?? "any"} beds`);
   if (filters.property_types?.length) parts.push(filters.property_types.map((t) => t.replace("_", " ")).join("/"));
-  if (filters.strategy && filters.strategy !== "both") parts.push(filters.strategy === "ltr" ? "long-term" : "short-term");
   return parts.join(" · ") || "All properties";
 }

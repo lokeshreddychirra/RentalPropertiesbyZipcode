@@ -15,7 +15,6 @@ import { cn, relativeTime } from "@/lib/utils";
 type Access = "everyone" | "user" | "admin";
 const NAV: { href: string; label: string; icon: typeof Search; access: Access }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, access: "everyone" },
-  { href: "/search", label: "Search Properties", icon: Search, access: "everyone" },
   { href: "/map", label: "Investment Map", icon: MapIcon, access: "everyone" },
   { href: "/compare", label: "Property Comparison", icon: GitCompareArrows, access: "everyone" },
   { href: "/saved", label: "Saved Properties", icon: Bookmark, access: "user" },
@@ -209,7 +208,7 @@ export function DemoBanner() {
       <Badge tone="demo" className="font-semibold uppercase tracking-wide">
         Demo data
       </Badge>
-      <span>Every property, rent and short-term rental figure shown is synthetic sample data — not a real listing.</span>
+      <span>Every property and rent shown is synthetic sample data — not a real listing.</span>
       {user?.role === "admin" ? (
         <Link href="/admin/users#data-sources" className="font-medium underline underline-offset-2">
           Connect live data
@@ -273,8 +272,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
         <footer className="border-t px-4 py-4 text-center text-[11px] leading-relaxed text-muted-foreground lg:px-6">
-          Estimates and projections are for research only and are not financial, legal or tax advice. Verify listings, rents, taxes and local short-term rental rules
-          independently before investing.
+          Estimates and projections are for research only and are not financial, legal or tax advice. Verify listings, rents and taxes independently before
+          investing.
         </footer>
       </div>
     </div>

@@ -118,7 +118,7 @@ function PricingContent() {
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight">Plans & pricing</h1>
         <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
-          Every search analyses all active listings in a ZIP code as long-term and short-term rentals. Re-opening a ZIP code you already searched this period is
+          Every search analyses all active listings in a ZIP code as long-term rentals. Re-opening a ZIP code you already searched this period is
           free.
         </p>
       </div>

@@ -92,7 +92,7 @@ async def test_llm_search_parse_is_revalidated(app, monkeypatch):
     )
     parsed = await parse_query("ltr deals in Macon GA under 180k, cap rate 7+, near good schools")
     assert parsed.engine == "llm" and parsed.valid
-    assert parsed.filters == {"cities": ["Macon, GA"], "max_price": 180000.0, "min_cap_rate": 7.0, "strategy": "ltr"}
+    assert parsed.filters == {"cities": ["Macon, GA"], "max_price": 180000.0, "min_cap_rate": 7.0}
     assert parsed.sort == "cap_rate" and parsed.unsupported[0].criterion == "near good schools"
 
     # A model answer that breaks the filter schema is reported as invalid, never executed.

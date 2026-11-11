@@ -63,7 +63,7 @@ function toCsv(rows: string[][]): string {
 
 export default function ComparePage() {
   const { compare, removeCompare, clearCompare, defaultsOrNull, weights, hydrated } = useApp();
-  const [filter, setFilter] = React.useState<Filter>("all");
+  const filter: Filter = "all";
   const ids = compare.map((item) => item.id);
 
   const query = useQuery({
@@ -116,7 +116,7 @@ export default function ComparePage() {
   if (hydrated && !ids.length) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12">
-        <EmptyState icon={<GitCompareArrows />} title="No properties selected" action={<Button asChild><Link href="/search">Search properties</Link></Button>}>
+        <EmptyState icon={<GitCompareArrows />} title="No properties selected" action={<Button asChild><Link href="/">Search properties</Link></Button>}>
           Select up to {MAX_COMPARE} properties with the “Compare” button on any result card or analysis page. They will appear here side by side.
         </EmptyState>
       </div>
@@ -133,19 +133,6 @@ export default function ComparePage() {
           <p className="text-sm text-muted-foreground">Up to {MAX_COMPARE} properties side by side, all evaluated with your standing assumptions. The strongest value in each row is highlighted.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg bg-muted p-1" role="radiogroup" aria-label="Metrics shown">
-            {(
-              [
-                ["all", "All metrics"],
-                ["ltr", "Long-term"],
-                ["str", "Short-term"],
-              ] as const
-            ).map(([value, label]) => (
-              <button key={value} type="button" role="radio" aria-checked={filter === value} onClick={() => setFilter(value)} className={cn("rounded-md px-3 py-1 text-sm font-medium", filter === value ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                {label}
-              </button>
-            ))}
-          </div>
           <Button variant="outline" onClick={exportCsv} disabled={!data}>
             <FileSpreadsheet /> Export CSV
           </Button>

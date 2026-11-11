@@ -25,7 +25,7 @@ from app.finance.engine import analyze_both
 from app.finance.inputs import Assumptions, Financing
 from app.finance.projections import financing_scenarios, forecast, scenarios, sensitivity
 from app.finance.quality import QualityInputs, assess_ltr, assess_str
-from app.finance.scoring import ScoreWeights, recommend, score_strategy
+from app.finance.scoring import Recommendation, ScoreWeights, score_strategy
 from app.schemas.analysis import (
     AnalysisRequest,
     Badge,
@@ -199,17 +199,16 @@ def build_badges(ctx: PropertyContext | None, analysis: PropertyAnalysis) -> lis
     positive_cash_flow   primary strategy monthly cash flow > $0
     high_yield           long-term gross yield ≥ HIGH_YIELD_THRESHOLD_PCT (default 8%)
     price_reduced        listing history shows the current price below a previous asking price
-    str_restrictions     STR legality recorded as restricted or prohibited
     below_market         list price ≥ BELOW_MARKET_THRESHOLD_PCT (default 5%) under the provider value estimate
-    needs_verification   confidence Low / Insufficient, a conditional STR recommendation,
-                         or both rent and property tax are non-property-specific estimates
+    needs_verification   confidence Low / Insufficient, or both rent and property tax are
+                         non-property-specific estimates
     """
     settings = get_settings()
     badges: list[Badge] = []
-    primary = analysis.long_term if analysis.primary_strategy != "str" else analysis.short_term
+    primary = analysis.long_term
 
     if primary.available and primary.monthly_cash_flow is not None and primary.monthly_cash_flow > 0:
-        badges.append(Badge(key="positive_cash_flow", label="Positive Cash Flow", tone="positive", detail=f"${primary.monthly_cash_flow:,.0f}/mo after debt service ({'short-term' if primary.strategy == 'str' else 'long-term'} rental)"))
+        badges.append(Badge(key="positive_cash_flow", label="Positive Cash Flow", tone="positive", detail=f"${primary.monthly_cash_flow:,.0f}/mo after debt service"))
 
     ltr = analysis.long_term
     if ltr.available and ltr.gross_yield_pct is not None and ltr.gross_yield_pct >= settings.high_yield_threshold_pct:
@@ -224,22 +223,9 @@ def build_badges(ctx: PropertyContext | None, analysis: PropertyAnalysis) -> lis
         if discount >= settings.below_market_threshold_pct:
             badges.append(Badge(key="below_market", label="Below Estimated Market Value", tone="positive", detail=f"List price is {discount:.1f}% under the ${ctx.value_estimate:,.0f} value estimate"))
 
-    legality = analysis.legality
-    if legality.status in ("restricted", "prohibited"):
-        badges.append(
-            Badge(
-                key="str_restrictions",
-                label="STR Restrictions",
-                tone="negative" if legality.status == "prohibited" else "warning",
-                detail=legality.summary or f"Short-term rentals recorded as {legality.status}",
-            )
-        )
-
     reasons: list[str] = []
     if analysis.confidence in ("low", "insufficient"):
         reasons.append(f"data confidence is {analysis.confidence}")
-    if analysis.recommendation.conditional:
-        reasons.append("STR legality unverified")
     if analysis.provenance.get("fixed.property_tax_annual") == "estimated" and ctx and ctx.rent and ctx.rent.source == "market_zip":
         reasons.append("rent and property tax are area-level estimates")
     if reasons:
@@ -267,11 +253,16 @@ def analyze(
     dom = ctx.days_on_market if ctx else None
     score_ltr = score_strategy(ltr, quality_ltr, weights, days_on_market=dom, legality=legality.status)
     score_str = score_strategy(st, quality_str, weights, days_on_market=dom, legality=legality.status)
-    recommendation = recommend(ltr, st, legality.status)
+    # Short-term rentals are not offered: every property is evaluated as a long-term rental.
+    recommendation = (
+        Recommendation(strategy="ltr", headline="Long-term rental", reasons=[], )
+        if ltr.available
+        else Recommendation(strategy=None, headline="Not enough data to evaluate", reasons=["No long-term rent estimate is available."], )
+    )
 
     primary = recommendation.strategy
-    overall = (score_str if primary == "str" else score_ltr).score if primary else None
-    confidence = (quality_str if primary == "str" else quality_ltr).label
+    overall = score_ltr.score if primary else None
+    confidence = quality_ltr.label
 
     analysis = PropertyAnalysis(
         property_id=ctx.id if ctx else None,
@@ -296,13 +287,10 @@ def analyze(
 
     if "forecast" in include:
         analysis.forecast_ltr = forecast(assumptions, "ltr")
-        analysis.forecast_str = forecast(assumptions, "str")
     if "scenarios" in include:
         analysis.scenarios_ltr = scenarios(assumptions, "ltr")
-        analysis.scenarios_str = scenarios(assumptions, "str")
     if "sensitivity" in include:
         analysis.sensitivity_ltr = sensitivity(assumptions, "ltr")
-        analysis.sensitivity_str = sensitivity(assumptions, "str")
     if "financing" in include:
         custom = [
             (

@@ -33,10 +33,10 @@ class AIExplanation(BaseModel):
     summary: str = Field(description="Two or three sentences: is this attractive and why, with the key figures")
     attractive_points: list[str] = Field(description="Why the property may be attractive")
     cash_flow: str = Field(description="Expected cash flow under the stated financing assumptions")
-    strategy_comparison: str = Field(description="Long-term versus short-term rental comparison, including legal status")
+    strategy_comparison: str = Field(description="One or two sentences on the long-term rental outlook: rent coverage of costs and what would improve returns")
     strengths: list[str] = Field(description="Financial strengths")
     risks: list[str] = Field(description="Financial risks")
-    sensitivity: str = Field(description="Sensitivity to mortgage rate and vacancy/occupancy using the provided stress figures")
+    sensitivity: str = Field(description="Sensitivity to mortgage rate and vacancy using the provided stress figures")
     missing_information: list[str] = Field(description="Missing or estimated information requiring verification")
     due_diligence_questions: list[str] = Field(description="Questions to answer before buying")
 
@@ -97,21 +97,15 @@ def _stress(analysis: PropertyAnalysis) -> dict[str, Any]:
     if not a.financing.is_cash:
         up = a.model_copy(deep=True)
         up.financing.interest_rate_pct = a.financing.interest_rate_pct + Decimal("1")
-        for strategy, key in (("ltr", "long_term"), ("str", "short_term")):
-            result = analyze_strategy(up, strategy)  # type: ignore[arg-type]
-            if result.available:
-                out[f"{key}_monthly_cash_flow_if_rate_plus_1pt"] = _n(result.monthly_cash_flow)
+        result = analyze_strategy(up, "ltr")
+        if result.available:
+            out["long_term_monthly_cash_flow_if_rate_plus_1pt"] = _n(result.monthly_cash_flow)
         out["rate_plus_1pt_pct"] = _n(up.financing.interest_rate_pct)
     if analysis.long_term.available:
         vac = a.model_copy(deep=True)
         vac.long_term.vacancy_pct = min(a.long_term.vacancy_pct + Decimal("5"), Decimal("100"))
         out["long_term_monthly_cash_flow_if_vacancy_plus_5pts"] = _n(analyze_strategy(vac, "ltr").monthly_cash_flow)
         out["stressed_vacancy_pct"] = _n(vac.long_term.vacancy_pct)
-    if analysis.short_term.available and a.short_term.occupancy_pct is not None:
-        occ = a.model_copy(deep=True)
-        occ.short_term.occupancy_pct = max(a.short_term.occupancy_pct - Decimal("10"), Decimal("1"))
-        out["short_term_monthly_cash_flow_if_occupancy_minus_10pts"] = _n(analyze_strategy(occ, "str").monthly_cash_flow)
-        out["stressed_occupancy_pct"] = _n(occ.short_term.occupancy_pct)
     return out
 
 
@@ -139,18 +133,14 @@ def build_facts(ctx: PropertyContext | None, analysis: PropertyAnalysis) -> dict
             "all_cash": a.financing.is_cash,
             "monthly_rent": _n(a.long_term.monthly_rent),
             "vacancy_pct": _n(a.long_term.vacancy_pct),
-            "property_tax_annual": _n(next((e.annual for e in (analysis.long_term.expenses or analysis.short_term.expenses) if e.key == "property_tax"), None)),
+            "property_tax_annual": _n(next((e.annual for e in analysis.long_term.expenses if e.key == "property_tax"), None)),
             "hoa_monthly": _n(a.fixed.hoa_monthly),
         },
         "loan": {"loan_amount": _n(analysis.loan.loan_amount), "monthly_payment": _n(analysis.loan.monthly_principal_interest + analysis.loan.monthly_pmi)},
         "long_term_rental": _strategy_facts(analysis.long_term),
-        "short_term_rental": _strategy_facts(analysis.short_term),
-        "recommendation": {"strategy": analysis.recommendation.strategy, "headline": analysis.recommendation.headline, "conditional": analysis.recommendation.conditional, "reasons": analysis.recommendation.reasons},
-        "str_legality": {"status": analysis.legality.status, "verified": analysis.legality.verified, "summary": analysis.legality.summary},
-        "investment_score": {"long_term": _n(analysis.score_ltr.score), "short_term": _n(analysis.score_str.score), "overall": _n(analysis.overall_score), "cap_note": analysis.score_ltr.cap_applied or analysis.score_str.cap_applied},
+        "investment_score": {"overall": _n(analysis.overall_score), "cap_note": analysis.score_ltr.cap_applied},
         "data_quality": {
             "long_term": {"label": analysis.quality_ltr.label, "score": analysis.quality_ltr.score, "caveats": analysis.quality_ltr.caveats},
-            "short_term": {"label": analysis.quality_str.label, "score": analysis.quality_str.score, "caveats": analysis.quality_str.caveats},
             "rent_estimate_source": (f"{ctx.rent.source} from {ctx.rent.provider}, {ctx.rent.comp_count} comparables" if ctx and ctx.rent else "none"),
             "estimated_or_missing_inputs": estimated,
         },
@@ -159,14 +149,12 @@ def build_facts(ctx: PropertyContext | None, analysis: PropertyAnalysis) -> dict
     return facts
 
 
-_KEY_INPUTS = {"fixed.property_tax_annual", "fixed.insurance_annual", "fixed.hoa_monthly", "long_term.monthly_rent", "short_term.adr", "short_term.occupancy_pct"}
+_KEY_INPUTS = {"fixed.property_tax_annual", "fixed.insurance_annual", "fixed.hoa_monthly", "long_term.monthly_rent"}
 _INPUT_LABELS = {
     "fixed.property_tax_annual": "Property tax is estimated from a rate and may reset after the sale",
-    "fixed.insurance_annual": "Insurance is estimated from a rate — get a landlord (or STR) policy quote",
+    "fixed.insurance_annual": "Insurance is estimated from a rate — get a landlord policy quote",
     "fixed.hoa_monthly": "HOA fee was not reported by the listing and is assumed to be $0",
     "long_term.monthly_rent": "Long-term rent is an estimate, not a signed lease",
-    "short_term.adr": "Short-term nightly rate is an estimate",
-    "short_term.occupancy_pct": "Short-term occupancy is an estimate",
 }
 
 
@@ -240,7 +228,7 @@ def _usd(value: Any) -> str:
 
 
 def rule_based_explanation(ctx: PropertyContext | None, analysis: PropertyAnalysis, facts: dict[str, Any]) -> AIExplanation:
-    ltr, st = analysis.long_term, analysis.short_term
+    ltr = analysis.long_term
     a = analysis.assumptions
     financing = "an all-cash purchase" if a.financing.is_cash else f"{a.financing.down_payment_pct.normalize():f}% down at {a.financing.interest_rate_pct.normalize():f}% over {a.financing.loan_term_years} years"
     stress = facts["stress_tests"]
@@ -263,59 +251,48 @@ def rule_based_explanation(ctx: PropertyContext | None, analysis: PropertyAnalys
             (risks if ltr.break_even_occupancy_pct > 90 else strengths).append(f"Long-term break-even occupancy is {ltr.break_even_occupancy_pct}%.")
         if ltr.cap_rate_pct >= 6:
             strengths.append(f"Cap rate of {ltr.cap_rate_pct}% on the asking price.")
-    if st.available:
-        if st.monthly_cash_flow > 0:
-            attractive.append(f"Short-term rental modelling shows {_usd(st.monthly_cash_flow)}/month cash flow at {st.str_detail.occupancy_pct}% occupancy and a {_usd(st.str_detail.adr)} nightly rate.")
-        else:
-            risks.append(f"Short-term rental cash flow is negative at {_usd(st.monthly_cash_flow)}/month.")
-        if st.break_even_occupancy_pct is not None:
-            risks.append(f"Short-term rental must stay above {st.break_even_occupancy_pct}% occupancy of available nights to break even.")
     if ctx and ctx.price_reduction:
         attractive.append(f"Asking price was reduced {ctx.price_reduction.percent}% from {_usd(ctx.price_reduction.previous_price)}.")
     if ctx and ctx.value_estimate and ctx.price and ctx.value_estimate > ctx.price:
         attractive.append(f"List price of {_usd(ctx.price)} is below the {_usd(ctx.value_estimate)} automated value estimate.")
-    if analysis.legality.status in ("restricted", "prohibited"):
-        risks.append(f"Short-term rentals are recorded as {analysis.legality.status} at this location.")
-    elif analysis.legality.status == "unknown" and st.available:
-        risks.append("Local short-term rental rules have not been verified, so STR income may not be achievable.")
     if ctx and ctx.days_on_market is not None and ctx.days_on_market > 90:
         risks.append(f"The listing has been on the market for {ctx.days_on_market} days, which can indicate pricing or condition issues.")
     if not attractive:
         attractive.append("No standout strengths were identified under the current assumptions.")
 
-    primary = st if analysis.primary_strategy == "str" else ltr
+    primary = ltr
     if primary.available:
         summary = (
-            f"Under {financing}, the {'short-term' if primary.strategy == 'str' else 'long-term'} rental scenario shows a {primary.gross_yield_pct}% gross yield, "
+            f"Under {financing}, the long-term rental scenario shows a {primary.gross_yield_pct}% gross yield, "
             f"a {primary.cap_rate_pct}% cap rate and {_usd(primary.monthly_cash_flow)}/month cash flow "
             f"({primary.cash_on_cash_pct}% cash-on-cash on {_usd(primary.total_cash_invested)} invested). "
             f"Data confidence is {analysis.confidence}."
         )
     else:
-        summary = "There is not enough rental income data to evaluate this property. Enter a rent or nightly rate to model returns."
+        summary = "There is not enough rental income data to evaluate this property. Enter a monthly rent to model returns."
 
     if ltr.available:
         cash_flow = f"Long-term: NOI of {_usd(ltr.noi_annual)}/year less {_usd(ltr.annual_debt_service)} of debt service leaves {_usd(ltr.monthly_cash_flow)}/month."
     else:
         cash_flow = "Long-term cash flow cannot be calculated without a rent estimate."
-    if st.available:
-        cash_flow += f" Short-term: NOI of {_usd(st.noi_annual)}/year leaves {_usd(st.monthly_cash_flow)}/month."
 
-    comparison = analysis.recommendation.headline + ". " + " ".join(analysis.recommendation.reasons)
-    comparison += f" STR regulatory risk: {analysis.recommendation.regulatory_risk_str}"
+    if ltr.available and ltr.monthly_cash_flow > 0:
+        comparison = f"Rent covers all costs including the mortgage, leaving {_usd(ltr.monthly_cash_flow)}/month."
+    elif ltr.available:
+        comparison = "Rent does not cover all costs under these assumptions. A lower price, a larger down payment or a higher rent would improve returns."
+    else:
+        comparison = "Enter a monthly rent to see the long-term rental outlook."
 
     parts: list[str] = []
     if "long_term_monthly_cash_flow_if_rate_plus_1pt" in stress:
         parts.append(f"A mortgage rate of {stress['rate_plus_1pt_pct']}% (one point higher) would change long-term cash flow to {_usd(stress['long_term_monthly_cash_flow_if_rate_plus_1pt'])}/month.")
     if "long_term_monthly_cash_flow_if_vacancy_plus_5pts" in stress:
         parts.append(f"Vacancy of {stress['stressed_vacancy_pct']}% (five points higher) would change it to {_usd(stress['long_term_monthly_cash_flow_if_vacancy_plus_5pts'])}/month.")
-    if "short_term_monthly_cash_flow_if_occupancy_minus_10pts" in stress:
-        parts.append(f"Short-term occupancy of {stress['stressed_occupancy_pct']}% (ten points lower) would change STR cash flow to {_usd(stress['short_term_monthly_cash_flow_if_occupancy_minus_10pts'])}/month.")
     if a.financing.is_cash:
         parts.append("This is modelled as a cash purchase, so returns are not sensitive to mortgage rates.")
 
     missing = [_INPUT_LABELS[path] for path in facts["data_quality"]["estimated_or_missing_inputs"] if path in _INPUT_LABELS and (analysis.provenance.get(path) != "unavailable" or path == "fixed.hoa_monthly")]
-    missing += [c for c in analysis.quality_ltr.caveats + analysis.quality_str.caveats if c not in missing]
+    missing += [c for c in analysis.quality_ltr.caveats if c not in missing]
     if ctx and ctx.is_demo:
         missing.insert(0, "This is synthetic demo data, not a real listing.")
 
@@ -325,8 +302,6 @@ def rule_based_explanation(ctx: PropertyContext | None, analysis: PropertyAnalys
         "What is the age and condition of the roof, HVAC, water heater, plumbing and electrical systems?",
         "Do recent signed leases for comparable homes nearby support the estimated rent?",
     ]
-    if st.available or analysis.legality.status != "permitted":
-        questions.append("Are short-term rentals permitted at this address (zoning, permits, occupancy taxes, HOA covenants), and are permits transferable?")
     if a.fixed.hoa_monthly > 0 or analysis.provenance.get("fixed.hoa_monthly") == "unavailable":
         questions.append("Is there an HOA? What are the dues, special assessments and rental restrictions?")
     if ctx and ctx.price_reduction:
@@ -349,11 +324,11 @@ def rule_based_explanation(ctx: PropertyContext | None, analysis: PropertyAnalys
 
 _SYSTEM = """You are an investment analyst explaining a rental property analysis to an individual investor.
 
-You will receive a JSON facts sheet. It contains every figure you may use: listing facts, the user's assumptions, results calculated by a deterministic financial engine, stress tests, data-quality notes and the recorded short-term-rental legal status.
+You will receive a JSON facts sheet. It contains every figure you may use: listing facts, the user's assumptions, results calculated by a deterministic financial engine, stress tests and data-quality notes. Every property is evaluated as a long-term rental only.
 
 Ground rules, which exist because investors will act on what you write:
 - Use only numbers that appear in the facts sheet, quoted as given (you may round to whole dollars or one decimal place). Do not calculate new figures, combine figures into new ones, or estimate anything yourself. If a figure you want is not there, say it is not available.
-- Do not state or imply that short-term renting is legal unless str_legality.status is "permitted". When the status is "unknown", say the rules have not been verified. When it is "prohibited", do not recommend short-term rental.
+- Discuss long-term renting only. Do not mention short-term or vacation rentals.
 - Do not mention comparable sales, neighbourhood qualities, schools, or market trends: none are in the facts sheet.
 - When is_demo_sample_data is true, say plainly that this is sample data rather than a real listing.
 - Treat estimated or missing inputs (data_quality) as things the investor must verify, and say so.

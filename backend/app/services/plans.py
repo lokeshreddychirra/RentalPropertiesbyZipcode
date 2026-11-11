@@ -70,7 +70,7 @@ def default_plans() -> dict[str, Plan]:
     return {
         "free": Plan(
             "free", "Free", Decimal("0"), s.plan_free_zip_searches, s.plan_free_property_reports, ZIPS_PER_SEARCH, False,
-            ("Full analysis of every listing in the ZIP", "Long-term vs short-term comparison", "Save properties"),
+            ("Full analysis of every listing in the ZIP", "Cash flow, cap rate and yield for every home", "Save properties"),
         ),
         "pro": Plan(
             "pro", "Pro", s.plan_pro_price_usd, s.plan_pro_zip_searches, s.plan_pro_property_reports, ZIPS_PER_SEARCH, True,

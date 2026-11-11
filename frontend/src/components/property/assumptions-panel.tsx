@@ -30,7 +30,7 @@ interface GroupDef {
 }
 
 const expense = (key: string) => (analysis: PropertyAnalysis) =>
-  (analysis.long_term.available ? analysis.long_term.expenses : analysis.short_term.expenses)?.find((line) => line.key === key)?.annual;
+  analysis.long_term.expenses?.find((line) => line.key === key)?.annual;
 
 export const GROUPS: GroupDef[] = [
   {
@@ -66,31 +66,6 @@ export const GROUPS: GroupDef[] = [
     ],
   },
   {
-    key: "str",
-    title: "Short-term rental",
-    fields: [
-      { section: "short_term", name: "adr", label: "Average daily rate", unit: "usd", nullable: true },
-      { section: "short_term", name: "occupancy_pct", label: "Occupancy", unit: "pct", help: "Share of available nights that are booked", nullable: true },
-      { section: "short_term", name: "management_pct", label: "STR management", unit: "pct", help: "Percent of accommodation revenue. Use 0 if self-managing." },
-      { section: "short_term", name: "furnishing_cost", label: "Furnishing (upfront)", unit: "usd" },
-      { section: "short_term", name: "unavailable_nights", label: "Unavailable nights / yr", unit: "nights", help: "Owner use, maintenance and blocked nights", advanced: true },
-      { section: "short_term", name: "max_rentable_nights", label: "Legal night cap / yr", unit: "nights", help: "Maximum rentable nights allowed by local rules or the HOA, if any", advanced: true, nullable: true },
-      { section: "short_term", name: "avg_stay_nights", label: "Average stay", unit: "nights", advanced: true },
-      { section: "short_term", name: "cleaning_fee_per_stay", label: "Cleaning fee charged / stay", unit: "usd", advanced: true },
-      { section: "short_term", name: "adr_includes_cleaning_fee", label: "Rate already includes cleaning fees", unit: "bool", help: "Turn on when the nightly-rate source bundles cleaning fees, so they are not counted twice.", advanced: true },
-      { section: "short_term", name: "cleaning_cost_per_turnover", label: "Cleaning cost / turnover", unit: "usd", advanced: true },
-      { section: "short_term", name: "platform_fee_pct", label: "Host / platform fee", unit: "pct", advanced: true },
-      { section: "short_term", name: "booking_fee_pct", label: "Booking / payment fee", unit: "pct", advanced: true },
-      { section: "short_term", name: "maintenance_pct", label: "Maintenance", unit: "pct", help: "Percent of accommodation revenue", advanced: true },
-      { section: "short_term", name: "capex_pct", label: "CapEx reserve", unit: "pct", advanced: true },
-      { section: "short_term", name: "utilities_monthly", label: "Utilities / mo", unit: "usd", advanced: true },
-      { section: "short_term", name: "internet_monthly", label: "Internet / mo", unit: "usd", advanced: true },
-      { section: "short_term", name: "consumables_per_turnover", label: "Supplies / turnover", unit: "usd", advanced: true },
-      { section: "short_term", name: "permit_fees_annual", label: "Permits & licences / yr", unit: "usd", advanced: true },
-      { section: "short_term", name: "additional_insurance_annual", label: "Extra STR insurance / yr", unit: "usd", advanced: true },
-    ],
-  },
-  {
     key: "fixed",
     title: "Ownership costs",
     fields: [
@@ -110,7 +85,7 @@ export const GROUPS: GroupDef[] = [
       { section: "forecast", name: "appreciation_pct", label: "Annual appreciation", unit: "pct" },
       { section: "forecast", name: "expense_inflation_pct", label: "Expense inflation", unit: "pct" },
       { section: "forecast", name: "selling_cost_pct", label: "Selling costs", unit: "pct", advanced: true },
-      { section: "forecast", name: "vacancy_change_pct_per_year", label: "Vacancy drift / yr", unit: "pct", help: "Percentage points added to vacancy (or removed from STR occupancy) each year", advanced: true },
+      { section: "forecast", name: "vacancy_change_pct_per_year", label: "Vacancy drift / yr", unit: "pct", help: "Percentage points added to vacancy each year", advanced: true },
     ],
   },
 ];

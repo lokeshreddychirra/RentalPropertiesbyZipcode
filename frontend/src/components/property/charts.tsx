@@ -54,32 +54,26 @@ function Frame({ height = 260, label, children }: { height?: number; label: stri
   );
 }
 
-/** Long-term vs short-term return metrics, side by side (one percent axis). */
+/** Long-term rental return metrics (one percent axis). */
 export function ReturnComparisonChart({ analysis }: { analysis: PropertyAnalysis }) {
-  const { long_term: ltr, short_term: st } = analysis;
+  const { long_term: ltr } = analysis;
   const rows = [
-    { metric: "Gross yield", ltr: ltr.gross_yield_pct, str: st.gross_yield_pct },
-    { metric: "Cap rate", ltr: ltr.cap_rate_pct, str: st.cap_rate_pct },
-    { metric: "Net yield", ltr: ltr.net_yield_pct, str: st.net_yield_pct },
-    { metric: "Cash-on-cash", ltr: ltr.cash_on_cash_pct, str: st.cash_on_cash_pct },
+    { metric: "Gross yield", ltr: ltr.gross_yield_pct },
+    { metric: "Cap rate", ltr: ltr.cap_rate_pct },
+    { metric: "Net yield", ltr: ltr.net_yield_pct },
+    { metric: "Cash-on-cash", ltr: ltr.cash_on_cash_pct },
   ];
   return (
-    <Frame label="Return metrics for long-term and short-term rental">
+    <Frame label="Return metrics for the long-term rental">
       <BarChart data={rows} margin={{ top: 18, right: 8, left: 0, bottom: 0 }} barGap={2} barCategoryGap="24%">
         <CartesianGrid vertical={false} stroke={GRID} />
         <XAxis dataKey="metric" tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} />
         <YAxis tick={AXIS} tickLine={false} axisLine={false} width={44} tickFormatter={(v: number) => `${v}%`} />
         <ReferenceLine y={0} stroke="#9ca3af" />
         <Tooltip cursor={{ fill: "#f3f4f6" }} content={<Tip format={(v) => pct(v, 2)} />} />
-        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
         {ltr.available ? (
-          <Bar dataKey="ltr" name="Long-term" fill={SERIES.ltr} radius={[4, 4, 0, 0]} maxBarSize={36}>
+          <Bar dataKey="ltr" name="Return" fill={SERIES.ltr} radius={[4, 4, 0, 0]} maxBarSize={36}>
             <LabelList dataKey="ltr" position="top" formatter={(v: unknown) => (typeof v === "number" ? `${v.toFixed(1)}%` : "")} style={{ fontSize: 10, fill: "#374151" }} />
-          </Bar>
-        ) : null}
-        {st.available ? (
-          <Bar dataKey="str" name="Short-term" fill={SERIES.str} radius={[4, 4, 0, 0]} maxBarSize={36}>
-            <LabelList dataKey="str" position="top" formatter={(v: unknown) => (typeof v === "number" ? `${v.toFixed(1)}%` : "")} style={{ fontSize: 10, fill: "#374151" }} />
           </Bar>
         ) : null}
       </BarChart>
@@ -99,25 +93,6 @@ export function ExpenseChart({ result, color }: { result: StrategyResult; color:
         <Bar dataKey="annual" name="Annual cost" fill={color} radius={[0, 4, 4, 0]} maxBarSize={16}>
           <LabelList dataKey="annual" position="right" formatter={(v: unknown) => (typeof v === "number" ? usd(v) : "")} style={{ fontSize: 11, fill: "#374151" }} />
         </Bar>
-      </BarChart>
-    </Frame>
-  );
-}
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-export function SeasonalityChart({ result }: { result: StrategyResult }) {
-  const detail = result.str_detail;
-  if (!detail) return null;
-  const rows = MONTHS.map((month, i) => ({ month, revenue: detail.monthly_revenue[i], noi: detail.monthly_net_operating_income[i] }));
-  return (
-    <Frame height={220} label="Projected short-term rental revenue by month">
-      <BarChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap="22%">
-        <CartesianGrid vertical={false} stroke={GRID} />
-        <XAxis dataKey="month" tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} />
-        <YAxis tick={AXIS} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => usdCompact(v)} />
-        <Tooltip cursor={{ fill: "#f3f4f6" }} content={<Tip format={(v) => usd(v)} />} />
-        <Bar dataKey="revenue" name="Gross revenue" fill={SERIES.str} radius={[4, 4, 0, 0]} maxBarSize={28} />
       </BarChart>
     </Frame>
   );

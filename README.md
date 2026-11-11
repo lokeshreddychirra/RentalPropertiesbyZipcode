@@ -1,12 +1,12 @@
 # PropertyYield AI
 
 Find US residential investment properties with the strongest rental yield, cash flow,
-cash-on-cash return and risk-adjusted profitability. Every listing is analysed as both a
-**long-term rental** and a **short-term rental**, the two strategies are compared, and results
-are ranked by calculated returns — not by price or estimated rent.
+cash-on-cash return and risk-adjusted profitability. Every listing is analysed as a
+**long-term rental** (short-term rentals are not offered), and results are ranked by
+calculated returns — not by price or estimated rent.
 
 > **Estimates, not advice.** All figures are estimates from third-party data and user
-> assumptions. Verify listings, rents, taxes and local short-term rental rules independently.
+> assumptions. Verify listings, rents and taxes independently.
 
 ## What it does
 
@@ -17,7 +17,7 @@ are ranked by calculated returns — not by price or estimated rent.
 * **Rank** every match with a deterministic financial engine and a configurable 0–100
   investment score; sort by ten return metrics. List, map, map + list and comparison-table views.
 * **Analyse** a property in depth: editable assumptions with instant recalculation,
-  long-term vs short-term comparison, expense breakdown, mortgage, 1–30 year forecast, financing
+  expense breakdown, mortgage, 1–30 year forecast, financing
   scenarios, conservative/base/optimistic cases, sensitivity tables, risk and data-quality
   assessment, rent and sale comparables, and a grounded AI explanation.
 * **Compare** up to five properties side by side with the best value per metric highlighted;
@@ -32,9 +32,6 @@ are ranked by calculated returns — not by price or estimated rent.
 * Sample data is never presented as live: without API credentials the app runs in a clearly
   labelled **demo mode** (banner on every page, DEMO tag on every record).
 * Missing estimates are shown as **unavailable**, never invented.
-* Short-term rental legality is **Unknown / needs verification** unless an administrator has
-  recorded a rule with a source; STR is never recommended where recorded as prohibited, and only
-  conditionally where unverified.
 * Every input is labelled as source data, estimate, default or user-entered, and every analysis
   carries a High / Medium / Low / Insufficient Data confidence label. Weak data caps the score.
 * The LLM explains calculated results; it never produces authoritative numbers, and responses

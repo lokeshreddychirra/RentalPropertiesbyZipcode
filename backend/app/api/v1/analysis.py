@@ -91,9 +91,8 @@ def _metrics(items: list[CompareItem]) -> list[CompareMetric]:
     rows: list[tuple[str, str, str, str, str | None, list[Any]]] = [
         ("price", "Purchase price", "currency", "lower", None, [f(i.analysis.assumptions.acquisition.purchase_price) for i in items]),
         ("score", "Investment score", "score", "higher", None, [f(i.analysis.overall_score) for i in items]),
-        ("recommended", "Recommended strategy", "text", "none", None, [i.analysis.recommendation.headline for i in items]),
     ]
-    for strategy, label in (("ltr", "Long-term"), ("str", "Short-term")):
+    for strategy, label in (("ltr", ""),):
         def r(item: CompareItem, strategy: str = strategy) -> Any:
             return item.analysis.long_term if strategy == "ltr" else item.analysis.short_term
 
@@ -112,11 +111,12 @@ def _metrics(items: list[CompareItem]) -> list[CompareMetric]:
         ]
     rows += [
         ("confidence", "Data confidence", "text", "higher", None, [i.analysis.confidence for i in items]),
-        ("str_legality", "STR regulatory status", "text", "none", None, [i.analysis.legality.label for i in items]),
     ]
 
     metrics: list[CompareMetric] = []
     for key, label, unit, better, strategy, values in rows:
+        label = label.strip()
+        label = label[:1].upper() + label[1:]
         best: int | None = None
         if better != "none" and len(items) > 1:
             if key == "confidence":

@@ -176,8 +176,6 @@ async def test_property_detail_and_estimates(client):
     assert value["available"] is False and value["can_request"] is True
     value = (await client.get(f"{API}/properties/{pid}/value-estimate", params={"fetch": True})).json()
     assert value["available"] and value["fetched_now"] and value["comparables"]
-    st = (await client.get(f"{API}/properties/{pid}/str-estimate")).json()
-    assert st["available"] and len(st["seasonality"]) == 12
 
 
 async def test_calculate_recalculates_with_overrides_and_provenance(client):
@@ -202,7 +200,8 @@ async def test_calculate_recalculates_with_overrides_and_provenance(client):
     assert changed["quality_ltr"]["factors"][1]["provenance"] == "user"
     assert len(changed["forecast_ltr"]["years"]) == 30
     assert [h["years"] for h in changed["forecast_ltr"]["horizons"]] == [1, 5, 10, 15, 30]
-    assert [s["name"] for s in changed["scenarios_str"]] == ["conservative", "base", "optimistic"]
+    assert [s["name"] for s in changed["scenarios_ltr"]] == ["conservative", "base", "optimistic"]
+    assert changed["forecast_str"] is None and changed["scenarios_str"] is None and changed["sensitivity_str"] is None
     assert {t["variable"] for t in changed["sensitivity_ltr"]["tables"]} == {"purchase_price", "rent", "occupancy"}  # no rate table for cash
     assert any(f["label"] == "Investor DSCR loan" for f in changed["financing"])
 
@@ -214,27 +213,19 @@ async def test_calculate_recalculates_with_overrides_and_provenance(client):
     assert (await client.post(f"{API}/analysis/calculate", json={})).status_code == 422
 
 
-async def test_str_never_recommended_where_prohibited(client):
-    job = await run_search(client, {"zip_codes": ["44120"]})  # demo ZIP flagged "prohibited"
-    data = await results(client, job["id"], sort="str_return", page_size=200)
-    assert data["items"]
-    for card in data["items"]:
-        assert card["legality_status"] == "prohibited"
-        assert card["primary_strategy"] != "str"
-        assert card["short_term"]["score"] in (0, None)
-        assert any(b["key"] == "str_restrictions" for b in card["badges"])
-
-
-async def test_unknown_legality_recommendation_is_conditional(client):
-    items = []
-    for zip_code in ("32413", "32808"):  # one ZIP per search
-        job = await run_search(client, {"zip_codes": [zip_code]})
-        items += (await results(client, job["id"], page_size=200))["items"]
-    data = {"items": items}
-    unknown_str = [c for c in data["items"] if c["legality_status"] == "unknown" and c["primary_strategy"] == "str"]
-    assert unknown_str and all(c["recommendation_conditional"] for c in unknown_str)
-    permitted_str = [c for c in data["items"] if c["legality_status"] == "permitted" and c["primary_strategy"] == "str"]
-    assert permitted_str and not any(c["recommendation_conditional"] for c in permitted_str)
+async def test_every_property_is_evaluated_as_a_long_term_rental(client):
+    # Short-term rentals are not offered: even ZIPs with demo STR data rank on long-term returns only.
+    for zip_code in ("44120", "32413"):
+        job = await run_search(client, {"zip_codes": [zip_code], "strategy": "both"})
+        assert job["filters"]["strategy"] == "ltr"
+        assert not any("short-term" in w.lower() for w in job["warnings"])
+        data = await results(client, job["id"], page_size=200)
+        assert data["items"]
+        for card in data["items"]:
+            assert card["primary_strategy"] in ("ltr", None) and not card["recommendation_conditional"]
+            assert not any(b["key"] == "str_restrictions" for b in card["badges"])
+            if card["primary_strategy"] == "ltr":
+                assert card["score"] == card["long_term"]["score"]
 
 
 async def test_compare_highlights_best_per_metric(client):

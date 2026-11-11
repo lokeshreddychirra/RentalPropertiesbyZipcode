@@ -179,7 +179,7 @@ function SavedContent() {
               ))}
             </div>
           ) : (
-            <EmptyState icon={<Bookmark />} title={favorites.data?.length ? "Nothing in this watchlist" : "No saved properties yet"} action={<Button asChild><Link href="/search">Find properties</Link></Button>}>
+            <EmptyState icon={<Bookmark />} title={favorites.data?.length ? "Nothing in this watchlist" : "No saved properties yet"} action={<Button asChild><Link href="/">Find properties</Link></Button>}>
               Use the bookmark button on any result card or analysis page.
             </EmptyState>
           )}
@@ -265,7 +265,7 @@ function SavedContent() {
               </Table>
             </Card>
           ) : (
-            <EmptyState icon={<Search />} title="No saved searches" action={<Button asChild><Link href="/search">Start a search</Link></Button>}>
+            <EmptyState icon={<Search />} title="No saved searches" action={<Button asChild><Link href="/">Start a search</Link></Button>}>
               Run a search and choose “Save search” to keep its filters and get alerts on new matches, price reductions, or cash-flow and yield targets.
             </EmptyState>
           )}
@@ -283,8 +283,7 @@ function SavedContent() {
                     <Th>Saved</Th>
                     <Th className="text-right">Price used</Th>
                     <Th>Recommendation</Th>
-                    <Th className="text-right">LTR cash flow</Th>
-                    <Th className="text-right">STR cash flow</Th>
+                    <Th className="text-right">Cash flow</Th>
                     <Th className="text-right">Score</Th>
                     <Th className="text-right">Actions</Th>
                   </tr>
@@ -304,7 +303,6 @@ function SavedContent() {
                         <Td className="tnum text-right">{usd(summary.price)}</Td>
                         <Td className="text-xs">{summary.recommendation ?? "—"}</Td>
                         <Td className="tnum text-right">{usd(summary.long_term?.monthly_cash_flow)}</Td>
-                        <Td className="tnum text-right">{usd(summary.short_term?.monthly_cash_flow)}</Td>
                         <Td className="tnum text-right font-semibold">{item.score != null ? item.score.toFixed(0) : "—"}</Td>
                         <Td className="text-right">
                           <Button

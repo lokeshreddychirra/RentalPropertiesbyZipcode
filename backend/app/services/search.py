@@ -566,8 +566,7 @@ def _summary(result: Any, score: Any, confidence: str) -> StrategySummary:
 
 
 def build_card(ctx: PropertyContext, analysis: PropertyAnalysis) -> PropertyCard:
-    primary = analysis.short_term if analysis.primary_strategy == "str" else analysis.long_term
-    upfront = primary.total_cash_invested if primary.available else (analysis.long_term.total_cash_invested or analysis.short_term.total_cash_invested)
+    upfront = analysis.long_term.total_cash_invested
     return PropertyCard(
         id=ctx.id,
         formatted_address=ctx.formatted_address,
@@ -840,27 +839,6 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
                 break
         upgraded.clear()
 
-    if providers.short_term is not None and filters.strategy in ("str", "both"):
-        str_provider = providers.short_term
-        missing = [pid for pid in promising() if contexts[pid].short_term is None]
-        allowed, limited = await _budgeted_top_n(str_provider.key, settings.str_estimate_top_n)
-        targets = missing[:allowed]
-        if limited and len(missing) > allowed:
-            partial.append(f"Short-term rental estimates were limited to {allowed} properties by the {str_provider.name} budget.")
-
-        async def fetch_str(ctx: PropertyContext) -> bool:
-            record = await str_provider.str_estimate(property_store.subject_for(ctx))
-            if record is None:
-                return False
-            async with session_scope() as session:
-                await property_store.save_str_estimate(session, ctx.id, record)
-            return True
-
-        if targets:
-            partial.extend(await run_stage("str_estimates", "Short-term rental estimates", targets, fetch_str, 78))
-    elif providers.short_term is None and filters.strategy in ("str", "both"):
-        warnings.append("Short-term rental revenue isn't estimated automatically (no short-term rental data source is connected). Open a property and enter a nightly rate and occupancy to model it.")
-
     # -- final ranking -----------------------------------------------------------
     state.stage, state.message, state.percent = "ranking", "Calculating returns and ranking", 94
     await progress(state)
@@ -917,16 +895,8 @@ async def run_search_job(job_id: str) -> None:
 
 
 def _view(card: PropertyCard, strategy: str) -> StrategySummary | None:
-    """The strategy whose metrics drive filtering and sorting for this card."""
-    if strategy == "ltr":
-        return card.long_term
-    if strategy == "str":
-        return card.short_term
-    if card.primary_strategy == "str":
-        return card.short_term
-    if card.primary_strategy == "ltr":
-        return card.long_term
-    return None
+    """The metrics that drive filtering and sorting: always the long-term rental."""
+    return card.long_term
 
 
 def passes_metric_filters(card: PropertyCard, filters: SearchFilters) -> bool:
@@ -963,7 +933,7 @@ _SORTS: dict[str, tuple[Callable[[PropertyCard, StrategySummary | None], Any], b
     # A cash purchase has no debt to cover, so it ranks above any finite DSCR.
     "dscr": (lambda c, v: (v.dscr if v.dscr is not None else Decimal("1e9")) if v and v.available else None, True),
     "ltr_return": (lambda c, v: c.long_term.cash_on_cash_pct, True),
-    "str_return": (lambda c, v: c.short_term.cash_on_cash_pct, True),
+    "str_return": (lambda c, v: c.long_term.cash_on_cash_pct, True),  # retired; kept for old links
     "price_asc": (lambda c, v: c.price, False),
     "price_desc": (lambda c, v: c.price, True),
     "newest": (lambda c, v: c.days_on_market, False),
