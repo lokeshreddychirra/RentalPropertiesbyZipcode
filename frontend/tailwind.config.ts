@@ -26,7 +26,10 @@ const config: Config = {
         caution: { DEFAULT: "hsl(var(--caution))", soft: "hsl(var(--caution-soft))" },
         negative: { DEFAULT: "hsl(var(--negative))", soft: "hsl(var(--negative-soft))" },
       },
-      borderRadius: { lg: "var(--radius)", md: "calc(var(--radius) - 2px)", sm: "calc(var(--radius) - 4px)" },
+      // Tailwind's own radius scale (sm 2 · md 6 · lg 8 · xl 12 · 2xl 16); no custom radii.
+      // Motion: weighted deceleration everywhere; never a browser default curve.
+      transitionTimingFunction: { DEFAULT: "cubic-bezier(0.22, 1, 0.36, 1)", out: "cubic-bezier(0.22, 1, 0.36, 1)" },
+      transitionDuration: { DEFAULT: "300ms" },
       boxShadow: { card: "0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06)" },
     },
   },

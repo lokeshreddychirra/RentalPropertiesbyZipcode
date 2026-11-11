@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, RotateCcw, Undo2 } from "lucide-react";
+import { ChevronDown, RotateCcw, Undo2 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Label, NumberInput, Slider, Switch } from "@/components/ui/form";
 import { Hint } from "@/components/ui/overlays";

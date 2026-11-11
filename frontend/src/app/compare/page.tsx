@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, FileDown, FileSpreadsheet, GitCompareArrows, X } from "lucide-react";
+import { CheckCircle2, FileDown, FileSpreadsheet, GitCompareArrows, X } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { ConfidenceBadge, DemoTag, RuleBadges, ScoreRing } from "@/components/property/bits";
 import { PropertyImage } from "@/components/property/property-image";

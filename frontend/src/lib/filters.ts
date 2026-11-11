@@ -52,15 +52,15 @@ export const US_STATES = [
 ];
 
 export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "score", label: "Best risk-adjusted score" },
+  { value: "score", label: "Best overall score" },
   { value: "gross_yield", label: "Highest gross rental yield" },
   { value: "net_yield", label: "Highest net rental yield" },
   { value: "cap_rate", label: "Highest cap rate" },
-  { value: "cash_on_cash", label: "Highest cash-on-cash return" },
+  { value: "cash_on_cash", label: "Highest cash on cash return" },
   { value: "cash_flow", label: "Highest monthly cash flow" },
   { value: "upfront", label: "Lowest upfront investment" },
   { value: "dscr", label: "Highest DSCR" },
-  { value: "ltr_return", label: "Best long-term rental return" },
+  { value: "ltr_return", label: "Best rental return" },
   { value: "price_asc", label: "Lowest price" },
   { value: "price_desc", label: "Highest price" },
   { value: "newest", label: "Newest listings" },

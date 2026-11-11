@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Map as MapIcon, Menu, Search, TrendingUp, User as UserIcon, Users } from "lucide-react";
+import { BarChart3, Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Menu, Search, TrendingUp, User as UserIcon, Users } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/overlays";
@@ -15,7 +15,6 @@ import { cn, relativeTime } from "@/lib/utils";
 type Access = "everyone" | "user" | "admin";
 const NAV: { href: string; label: string; icon: typeof Search; access: Access }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, access: "everyone" },
-  { href: "/map", label: "Investment Map", icon: MapIcon, access: "everyone" },
   { href: "/compare", label: "Property Comparison", icon: GitCompareArrows, access: "everyone" },
   { href: "/saved", label: "Saved Properties", icon: Bookmark, access: "user" },
   { href: "/market", label: "Market Analytics", icon: BarChart3, access: "everyone" },
@@ -34,7 +33,7 @@ function Brand() {
       <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
         <TrendingUp className="size-4" aria-hidden />
       </span>
-      <span className="text-[15px] font-semibold tracking-tight">
+      <span className="body-4 whitespace-nowrap tracking-tight">
         PropertyYield <span className="text-positive">AI</span>
       </span>
     </Link>
@@ -46,8 +45,8 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const { compare } = useApp();
   const allowed = useAccess();
   return (
-    <nav aria-label="Main" className="flex flex-col gap-0.5">
-      {NAV.filter((item) => allowed(item.access)).map(({ href, label, icon: Icon }) => {
+    <nav aria-label="Main" className="flex flex-col gap-1">
+      {NAV.filter((item) => allowed(item.access)).map(({ href, label, icon: Icon }, index) => {
         const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
         return (
           <Link
@@ -55,9 +54,11 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             href={href}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
+            style={onNavigate ? { animationDelay: `${Math.min(index * 60, 400)}ms` } : undefined}
             className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              "title-4 flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
               active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+              onNavigate && "nav-enter",
             )}
           >
             <Icon className="size-4 shrink-0" aria-hidden />
@@ -99,7 +100,7 @@ function Notifications() {
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{item.title}</span>
                     <span className="block text-xs text-muted-foreground">{item.body}</span>
-                    <span className="block text-[11px] text-muted-foreground">{relativeTime(item.created_at)}</span>
+                    <span className="caption-5 block text-muted-foreground">{relativeTime(item.created_at)}</span>
                   </span>
                 </Link>
               </DropdownMenuItem>
@@ -145,8 +146,11 @@ function UserMenu() {
         <Button asChild variant="ghost" size="sm">
           <Link href="/login">Sign in</Link>
         </Button>
-        <Button asChild size="sm">
-          <Link href="/login?mode=register">Create free account</Link>
+        <Button asChild size="sm" variant="outline">
+          <Link href="/login?mode=register">
+            <span className="sm:hidden">Sign up</span>
+            <span className="hidden sm:inline">Create free account</span>
+          </Link>
         </Button>
       </div>
     );
@@ -161,7 +165,7 @@ function UserMenu() {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>
           <span className="block truncate text-sm text-foreground">{user.name || user.email}</span>
-          {user.role === "admin" ? <span className="text-[11px]">Administrator</span> : null}
+          {user.role === "admin" ? <span className="caption-5">Administrator</span> : null}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
@@ -204,11 +208,11 @@ export function DemoBanner() {
   const { user } = useSession();
   if (!data || data.data_mode !== "demo") return null;
   return (
-    <div role="status" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 border-b border-[#d6ccfb] bg-[#f5f3ff] px-4 py-1.5 text-center text-xs text-[#4c1d95]">
+    <div role="status" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 border-b border-[#d6ccfb] bg-[#f5f3ff] px-4 py-2 text-center text-xs text-[#4c1d95]">
       <Badge tone="demo" className="font-semibold uppercase tracking-wide">
         Demo data
       </Badge>
-      <span>Every property and rent shown is synthetic sample data — not a real listing.</span>
+      <span>Every property and rent shown is synthetic sample data, not a real listing.</span>
       {user?.role === "admin" ? (
         <Link href="/admin/users#data-sources" className="font-medium underline underline-offset-2">
           Connect live data
@@ -244,7 +248,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <DemoBanner />
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur lg:px-6">
+        <header className="sticky top-2 z-30 mx-2 mt-2 flex h-14 items-center gap-3 rounded-2xl border bg-card/75 px-3 shadow-sm backdrop-blur-md lg:mx-4 lg:px-4">
           <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation">
@@ -258,7 +262,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="lg:hidden">
             <Brand />
           </div>
-          <div className="hidden items-center gap-2 text-sm text-muted-foreground lg:flex">
+          <div className="body-6 hidden items-center gap-2 text-muted-foreground lg:flex">
             <Building2 className="size-4" aria-hidden />
             Residential investment analysis · United States
           </div>
@@ -271,9 +275,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main id="main" className="flex-1">
           {children}
         </main>
-        <footer className="border-t px-4 py-4 text-center text-[11px] leading-relaxed text-muted-foreground lg:px-6">
-          Estimates and projections are for research only and are not financial, legal or tax advice. Verify listings, rents and taxes independently before
-          investing.
+        <footer className="caption-5 text-pretty px-4 py-6 text-center text-muted-foreground lg:px-6">
+          Estimates and projections are for research only and are not financial, legal or tax advice. Verify listings, rents and taxes independently before investing.
         </footer>
       </div>
     </div>

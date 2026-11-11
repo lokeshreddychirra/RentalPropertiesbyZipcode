@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookmarkPlus, ChevronLeft, ChevronRight, Columns2, GitCompareArrows, Info, LayoutGrid, Lock, Map as MapIcon, RefreshCw, SearchX, Sparkles, Table2, X } from "lucide-react";
+import { BookmarkPlus, ChevronLeft, ChevronRight, GitCompareArrows, Info, LayoutGrid, Lock, Map as MapIcon, RefreshCw, SearchX, Sparkles, Table2, X } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { MapView } from "@/components/map/map-view";
 import { ConfidenceBadge, DemoTag, ScoreRing } from "@/components/property/bits";
@@ -20,13 +20,14 @@ import { cn, pct, ratio, signTone, usd } from "@/lib/utils";
 import { PropertyCard, viewOf } from "./property-card";
 import { SearchPanel } from "./search-panel";
 
-type View = "list" | "map" | "split" | "table";
-const VIEWS: { value: View; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { value: "list", label: "List", icon: LayoutGrid },
-  { value: "split", label: "Map + list", icon: Columns2 },
-  { value: "map", label: "Map", icon: MapIcon },
-  { value: "table", label: "Compare view", icon: Table2 },
+type View = "list" | "map" | "table";
+const VIEWS: { value: View; label: string; hint: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { value: "list", label: "List", hint: "Property cards, best first", icon: LayoutGrid },
+  { value: "map", label: "Map", hint: "Map beside the list; markers show price and yield", icon: MapIcon },
+  { value: "table", label: "Table", hint: "Every metric side by side", icon: Table2 },
 ];
+/** Older links used "split" (map + list); that is now simply the map view. */
+const toView = (value: string | null, fallback: View): View => (value === "split" ? "map" : value === "list" || value === "map" || value === "table" ? value : fallback);
 const PAGE_SIZE = 24;
 
 // ----------------------------------------------------------------------------- pieces
@@ -35,13 +36,13 @@ function Progress({ job }: { job: SearchJob | undefined }) {
   const progress = job?.progress;
   const percent = progress?.percent ?? 2;
   return (
-    <Card className="p-5" role="status" aria-live="polite">
+    <Card className="p-6" role="status" aria-live="polite">
       <div className="mb-2 flex items-center justify-between gap-3 text-sm">
-        <span className="font-medium">{progress?.message ?? "Starting search…"}</span>
+        <span className="title-4">{progress?.message ?? "Starting search…"}</span>
         <span className="tnum text-muted-foreground">{percent}%</span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="Search progress">
-        <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${Math.max(percent, 3)}%` }} />
+        <div className="h-full origin-left rounded-full bg-primary transition-transform duration-500" style={{ transform: `scaleX(${Math.max(percent, 3) / 100})` }} />
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
         Listings in your ZIP code are screened against your filters, then every match is analysed for rent, cash flow and yield.
@@ -73,13 +74,13 @@ function SignUpGate() {
   const next = typeof window !== "undefined" ? window.location.pathname + window.location.search : "/";
   return (
     <Card className="flex flex-col items-center gap-3 px-6 py-10 text-center">
-      <span className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
+      <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
         <Lock className="size-5" aria-hidden />
       </span>
       <div>
-        <h2 className="text-lg font-semibold">Create a free account to see results</h2>
-        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Your first ZIP code search is free — every listing analysed for cash flow, yield and risk. No card required.
+        <h2 className="heading-6 text-balance">Create a free account to see results</h2>
+        <p className="mx-auto mt-2 max-w-md text-pretty text-sm text-muted-foreground">
+          Your first ZIP code search is free, with every listing analysed for cash flow, yield and risk. No card required.
         </p>
       </div>
       <div className="flex flex-wrap justify-center gap-2">
@@ -98,12 +99,12 @@ function SignUpGate() {
 function UpgradeCard({ message }: { message: string }) {
   return (
     <Card className="flex flex-col items-center gap-3 border-primary/30 px-6 py-10 text-center">
-      <span className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
+      <span className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
         <Sparkles className="size-5" aria-hidden />
       </span>
       <div>
-        <h2 className="text-lg font-semibold">Upgrade to keep searching</h2>
-        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">{message}</p>
+        <h2 className="heading-6 text-balance">Upgrade to keep searching</h2>
+        <p className="mx-auto mt-2 max-w-md text-pretty text-sm text-muted-foreground">{message}</p>
       </div>
       <Button asChild>
         <Link href="/pricing">See plans</Link>
@@ -127,7 +128,7 @@ function JobNotices({ job }: { job: SearchJob }) {
       {job.warnings.length ? (
         <ul className="space-y-1 text-xs text-muted-foreground">
           {job.warnings.map((warning) => (
-            <li key={warning} className="flex items-start gap-1.5">
+            <li key={warning} className="flex items-start gap-2">
               <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               <span>{warning}</span>
             </li>
@@ -288,13 +289,13 @@ export function CompareTray() {
   if (!compare.length) return null;
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 shadow-[0_-4px_16px_rgb(16_24_40/0.08)] backdrop-blur" role="region" aria-label="Properties selected for comparison">
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-4 py-2.5 lg:pl-64">
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-4 py-3 lg:pl-64">
         <span className="text-sm font-medium">
           Compare <span className="tnum text-muted-foreground">({compare.length}/{MAX_COMPARE})</span>
         </span>
-        <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
+        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto">
           {compare.map((item) => (
-            <span key={item.id} className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-background py-0.5 pl-2.5 pr-1 text-xs">
+            <span key={item.id} className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-background py-0.5 pl-3 pr-1 text-xs">
               <span className="max-w-[150px] truncate">{item.address.split(",")[0]}</span>
               <button type="button" className="rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => removeCompare(item.id)} aria-label={`Remove ${item.address} from comparison`}>
                 <X className="size-3" />
@@ -320,7 +321,8 @@ export function CompareTray() {
 interface Props {
   basePath: string;
   defaultView?: View;
-  heading?: React.ReactNode;
+  /** Page heading; a function receives whether a search is active (to show a compact version). */
+  heading?: React.ReactNode | ((active: boolean) => React.ReactNode);
   /** Rendered above results when no search has been run yet. */
   idle?: React.ReactNode;
 }
@@ -337,7 +339,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
   const rawFilters = params.get("f");
   const filters = React.useMemo(() => decodeFilters(rawFilters), [rawFilters]);
   const sort = (params.get("sort") as SortKey) || "score";
-  const view = (params.get("view") as View) || defaultView;
+  const view = toView(params.get("view"), defaultView);
   const page = Math.max(1, Number(params.get("page") ?? "1") || 1);
   const strategy: StrategyFilter = (filters?.strategy as StrategyFilter) ?? "both";
 
@@ -411,7 +413,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
   const done = job?.status === "completed";
 
   const polygonParam = area?.length ? area.map(([lng, lat]) => `${lng.toFixed(6)},${lat.toFixed(6)}`).join(";") : null;
-  const activeBbox = followMap && (view === "split" || view === "map") ? bbox : null;
+  const activeBbox = followMap && view === "map" ? bbox : null;
 
   const results = useQuery({
     queryKey: ["search-results", jobId, sort, page, activeBbox, polygonParam],
@@ -423,7 +425,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
   const mapQuery = useQuery({
     queryKey: ["search-map", jobId],
     queryFn: () => api.mapPoints(jobId as string),
-    enabled: !!jobId && done && view !== "list" && view !== "table",
+    enabled: !!jobId && done && view === "map",
     staleTime: Infinity,
     retry: false,
   });
@@ -462,7 +464,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
     ) : (
       <div className={cn("grid gap-4", columns, results.isFetching && "opacity-60 transition-opacity")}>
         {cards.map((card) => (
-          <PropertyCard key={card.id} card={card} strategy={strategy} selected={selected === card.id} onHover={view === "split" ? setHovered : undefined} />
+          <PropertyCard key={card.id} card={card} strategy={strategy} selected={selected === card.id} onHover={view === "map" ? setHovered : undefined} />
         ))}
       </div>
     );
@@ -485,8 +487,8 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
   );
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 pb-24 lg:px-6">
-      {heading}
+    <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-6 pb-24 lg:px-6">
+      {typeof heading === "function" ? heading(!!filters) : heading}
       <SearchPanel
         initial={filters}
         busy={running}
@@ -523,10 +525,10 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
 
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold tracking-tight" data-testid="result-count">
+              <h2 className="heading-5" data-testid="result-count">
                 {data ? `${data.total.toLocaleString()} ${data.total === 1 ? "property" : "properties"}` : "Loading results…"}
               </h2>
-              <p className="text-xs text-muted-foreground">
+              <p className="caption-5 text-muted-foreground">
                 Ranked by calculated returns
                 {isAdmin ? (
                   <>
@@ -548,7 +550,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {filters ? <SaveSearchDialog filters={filters} /> : null}
-              <div className="w-60">
+              <div className="w-56">
                 <Select aria-label="Sort results" value={sort} onChange={(e) => navigate({ sort: e.target.value })}>
                   {SORT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -557,18 +559,22 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
                   ))}
                 </Select>
               </div>
-              <div className="inline-flex rounded-lg bg-muted p-1" role="tablist" aria-label="Result view">
-                {VIEWS.map(({ value, label, icon: Icon }) => (
+              <div className="inline-flex rounded-xl border bg-muted p-1" role="tablist" aria-label="Result view" data-testid="view-switch">
+                {VIEWS.map(({ value, label, hint, icon: Icon }) => (
                   <button
                     key={value}
                     type="button"
                     role="tab"
+                    title={hint}
                     aria-selected={view === value}
                     onClick={() => navigate({ view: value }, true)}
-                    className={cn("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium transition-colors", view === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                    className={cn(
+                      "button-sm inline-flex h-8 items-center gap-2 rounded-lg px-3 transition-[color,background-color,box-shadow,transform] active:scale-[0.98]",
+                      view === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                    )}
                   >
                     <Icon className="size-4" aria-hidden />
-                    <span className="hidden sm:inline">{label}</span>
+                    {label}
                   </button>
                 ))}
               </div>
@@ -585,15 +591,15 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
                 ["Positive cash flow", `${data.summary.positive_cash_flow_count} of ${data.total}`],
                 ["Average score", data.summary.average_score != null ? data.summary.average_score.toFixed(0) : "—"],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-lg border bg-card px-3 py-2">
-                  <dt className="text-[11px] text-muted-foreground">{label}</dt>
-                  <dd className="tnum text-base font-semibold">{value}</dd>
+                <div key={label} className="rounded-xl border bg-card px-4 py-3">
+                  <dt className="caption-5 text-muted-foreground">{label}</dt>
+                  <dd className="tnum title-2 mt-1">{value}</dd>
                 </div>
               ))}
             </dl>
           ) : null}
 
-          {(view === "split" || view === "map") && (
+          {view === "map" && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <label className="inline-flex items-center gap-2">
                 <Switch checked={followMap} onCheckedChange={setFollowMap} aria-label="Only show properties in the visible map area" />
@@ -608,7 +614,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
           {data && data.total === 0 ? (
             <EmptyState icon={<SearchX />} title="No properties match these filters">
               {data.summary.total > 0
-                ? `None of the matching homes meet your return thresholds${activeBbox || polygonParam ? " inside the selected map area" : ""}. Try lowering the yield, cap-rate or cash-flow minimums.`
+                ? `None of the matching homes meet your return thresholds${activeBbox || polygonParam ? " inside the selected map area" : ""}. Try lowering the yield, cap rate or cash flow minimums.`
                 : job.data_mode === "demo"
                   ? "The demo dataset only covers a set of sample markets (listed under the search panel). Try Atlanta, GA or ZIP 30269."
                   : (job.listings_fetched ?? 0) > 0
@@ -620,21 +626,15 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
           {view === "list" ? list("sm:grid-cols-2 xl:grid-cols-3") : null}
           {view === "table" ? results.isLoading ? <Skeleton className="h-96 w-full" /> : cards.length ? <ResultsTable cards={cards} strategy={strategy} /> : null : null}
           {view === "map" ? (
-            <>
-              {map("h-[70vh] min-h-[420px]")}
-              {selected ? cards.filter((c) => c.id === selected).map((card) => <PropertyCard key={card.id} card={card} strategy={strategy} layout="row" selected />) : null}
-            </>
-          ) : null}
-          {view === "split" ? (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-              <div className="order-2 lg:order-1">{list("xl:grid-cols-2")}</div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]" data-testid="map-view">
+              <div className="order-2 lg:order-1">{list("sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2")}</div>
               <div className="order-1 lg:order-2">
-                <div className="lg:sticky lg:top-[4.5rem]">{map("h-[46vh] min-h-[320px] lg:h-[calc(100vh-6rem)]")}</div>
+                <div className="lg:sticky lg:top-24">{map("h-[46vh] min-h-[320px] lg:h-[calc(100vh-8rem)]")}</div>
               </div>
             </div>
           ) : null}
 
-          {view !== "map" ? pager : null}
+          {pager}
         </section>
       ) : null}
       <CompareTray />

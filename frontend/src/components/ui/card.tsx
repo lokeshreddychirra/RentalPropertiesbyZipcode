@@ -1,10 +1,10 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, XCircle } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
 export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("rounded-lg border bg-card text-card-foreground shadow-card", className)} {...props} />
+  <div ref={ref} className={cn("rounded-xl border bg-card text-card-foreground shadow-card", className)} {...props} />
 ));
 Card.displayName = "Card";
 
@@ -24,7 +24,7 @@ export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDi
   return <div className={cn("p-5 pt-0", className)} {...props} />;
 }
 
-const badgeVariants = cva("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 whitespace-nowrap", {
+const badgeVariants = cva("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap", {
   variants: {
     tone: {
       neutral: "border-border bg-secondary text-secondary-foreground",
@@ -93,10 +93,10 @@ export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCell
 
 export function EmptyState({ icon, title, children, action }: { icon?: React.ReactNode; title: string; children?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-card px-6 py-12 text-center">
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-card px-6 py-12 text-center">
       {icon ? <div className="mb-3 text-muted-foreground [&_svg]:size-8">{icon}</div> : null}
-      <p className="text-base font-semibold">{title}</p>
-      {children ? <div className="mt-1 max-w-md text-sm text-muted-foreground">{children}</div> : null}
+      <p className="title-2 text-balance">{title}</p>
+      {children ? <div className="mt-2 max-w-md text-pretty text-sm text-muted-foreground">{children}</div> : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
   );

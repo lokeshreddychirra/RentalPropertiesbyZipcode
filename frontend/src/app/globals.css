@@ -23,8 +23,7 @@
     --border: 216 16% 88%;
     --input: 216 16% 84%;
     --ring: 215 60% 45%;
-    --radius: 0.6rem;
-    --font-sans: "Inter Variable", Inter;
+    --font-sans: "Geist Variable", Geist;
 
     --positive: 152 62% 28%;
     --positive-soft: 150 52% 94%;
@@ -59,6 +58,44 @@
   }
 }
 
+/* Named text styles (landing-page-design B1). Sizes are Tailwind scale steps with their line heights. */
+@layer components {
+  .heading-1 { @apply text-6xl font-semibold tracking-tight; }
+  .heading-2 { @apply text-5xl font-semibold tracking-tight; }
+  .heading-3 { @apply text-4xl font-semibold tracking-tight; }
+  .heading-4 { @apply text-3xl font-semibold tracking-tight; }
+  .heading-5 { @apply text-2xl font-semibold tracking-tight; }
+  .heading-6 { @apply text-xl font-semibold; }
+  .title-1 { @apply text-xl font-medium; }
+  .title-2 { @apply text-lg font-medium; }
+  .title-3 { @apply text-base font-medium; }
+  .title-4 { @apply text-sm font-medium; }
+  .title-5 { @apply text-xs font-medium; }
+  .body-1 { @apply text-base font-semibold; }
+  .body-2 { @apply text-base font-medium; }
+  .body-3 { @apply text-base font-normal; }
+  .body-4 { @apply text-sm font-semibold; }
+  .body-5 { @apply text-sm font-medium; }
+  .body-6 { @apply text-sm font-normal; }
+  .button-lg { @apply text-lg font-semibold; }
+  .button-md { @apply text-base font-semibold; }
+  .button-sm { @apply text-sm font-semibold; }
+  .button-xsm { @apply text-xs font-semibold; }
+  .caption-1 { @apply text-sm font-medium; }
+  .caption-2 { @apply text-sm font-normal; }
+  .caption-3 { @apply text-xs font-semibold; }
+  .caption-4 { @apply text-xs font-medium; }
+  .caption-5 { @apply text-xs font-normal; }
+
+  /* Hero heading: the one gradient, on text only (B5). */
+  .hero-gradient {
+    background-image: linear-gradient(to right, #000000, #666666);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
 @layer utilities {
   /* Tabular figures wherever numbers are compared */
   .tnum {
@@ -72,7 +109,7 @@
 
 .mapboxgl-popup-content,
 .maplibregl-popup-content {
-  border-radius: 0.6rem;
+  border-radius: 0.75rem;
   padding: 0;
   box-shadow: 0 8px 24px rgb(16 24 40 / 0.16);
 }
@@ -133,4 +170,54 @@
 }
 .sim-slider:focus-visible::-moz-range-thumb {
   box-shadow: 0 0 0 4px rgb(42 120 214 / 0.3);
+}
+
+/* Scroll reveal (B7): rise 32px and fade in once, on the base curve. */
+.reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal[data-shown="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+/* Tagline reveal (B11): each word moves from a muted tone to full colour in reading order. */
+.reveal-word {
+  opacity: 0.3;
+  transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-word[data-on="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    transform: none;
+    transition: opacity 300ms linear;
+  }
+  .reveal-word {
+    opacity: 1;
+    transition: none;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Mobile menu links arrive one after another (B7): up 24px and fade in, 60ms apart, capped at 400ms. */
+@keyframes nav-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.nav-enter {
+  animation: nav-enter 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }

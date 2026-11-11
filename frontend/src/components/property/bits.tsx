@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "@/components/ui/icons";
 import { Badge } from "@/components/ui/card";
 import { Hint } from "@/components/ui/overlays";
 import type { Badge as BadgeData, Confidence, Provenance } from "@/lib/types";
@@ -124,9 +124,9 @@ export function DemoTag({ className }: { className?: string }) {
 export function Metric({ label, value, tone, hint, sub }: { label: string; value: React.ReactNode; tone?: string; hint?: string; sub?: React.ReactNode }) {
   const body = (
     <div className="min-w-0">
-      <dt className="text-[11px] leading-tight text-muted-foreground">{label}</dt>
+      <dt className="caption-5 text-muted-foreground">{label}</dt>
       <dd className={cn("tnum truncate text-sm font-semibold", tone)}>{value}</dd>
-      {sub ? <dd className="truncate text-[11px] text-muted-foreground">{sub}</dd> : null}
+      {sub ? <dd className="caption-5 truncate text-muted-foreground">{sub}</dd> : null}
     </div>
   );
   return hint ? <Hint content={hint}>{body}</Hint> : body;

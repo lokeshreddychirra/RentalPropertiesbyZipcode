@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bath, BedDouble, Bookmark, BookmarkCheck, Clock, ExternalLink, GitCompareArrows, LineChart, Ruler } from "lucide-react";
+import { Bath, BedDouble, Bookmark, BookmarkCheck, Clock, ExternalLink, GitCompareArrows, LineChart, Ruler } from "@/components/ui/icons";
 import { ConfidenceBadge, DemoTag, Metric, RuleBadges, ScoreRing } from "@/components/property/bits";
 import { PropertyImage } from "@/components/property/property-image";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,8 @@ export function viewOf(card: CardData, strategy: StrategyFilter): { key: "ltr" |
 }
 
 const RENT_SOURCE_NOTE: Record<string, string> = {
-  property_avm: "Property-level rent estimate with comparables",
-  market_zip: "Conservative ZIP-level screening estimate, not specific to this property — open the analysis to request a property-level estimate",
+  property_avm: "Property level rent estimate with comparables",
+  market_zip: "Conservative ZIP level screening estimate, not specific to this property. Open the analysis to request a property level estimate.",
   none: "No rent estimate available",
 };
 
@@ -48,7 +48,7 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
       data-testid="property-card"
       onMouseEnter={() => onHover?.(card.id)}
       onMouseLeave={() => onHover?.(null)}
-      className={cn("group flex overflow-hidden transition-shadow hover:shadow-md", layout === "grid" ? "flex-col" : "flex-col sm:flex-row", selected && "ring-2 ring-[hsl(var(--ring))]")}
+      className={cn("group flex overflow-hidden transition-[box-shadow,transform] duration-500 hover:-translate-y-0.5 hover:shadow-lg", layout === "grid" ? "flex-col" : "flex-col sm:flex-row", selected && "ring-2 ring-[hsl(var(--ring))]")}
     >
       <Link href={href} className={cn("relative block shrink-0", layout === "grid" ? (card.image_url ? "aspect-[16/9] w-full" : "aspect-[16/6] w-full") : "aspect-[16/6] w-full sm:aspect-auto sm:w-52")} tabIndex={-1} aria-hidden>
         <PropertyImage id={card.id} url={card.image_url} type={card.property_type} alt={card.formatted_address} className="size-full" />
@@ -61,16 +61,16 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
       <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
         <div>
           <div className="flex items-start justify-between gap-2">
-            <p className="tnum text-xl font-semibold leading-none tracking-tight">{usd(card.price)}</p>
+            <p className="tnum heading-6">{usd(card.price)}</p>
             <ConfidenceBadge level={card.confidence} short />
           </div>
-          <Link href={href} className="mt-1.5 block truncate text-sm font-medium hover:underline" title={card.formatted_address}>
+          <Link href={href} className="title-4 mt-1 block truncate hover:underline" title={card.formatted_address}>
             {card.address_line1 ?? card.formatted_address}
           </Link>
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="caption-5 truncate text-muted-foreground">
             {[card.city, card.state].filter(Boolean).join(", ")} {card.zip_code} · {titleCase(card.property_type)}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <div className="caption-5 mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <BedDouble className="size-3.5" aria-hidden /> {card.bedrooms ?? "—"} bd
             </span>
@@ -84,13 +84,13 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
           </div>
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-md bg-muted/50 p-2.5">
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-muted/60 p-3">
           <Metric
             label="Monthly rent"
             value={card.long_term.available ? `${usd(card.long_term.monthly_income)}/mo` : "Unavailable"}
             tone={card.long_term.available ? undefined : "text-muted-foreground font-medium"}
             hint={RENT_SOURCE_NOTE[card.rent_source]}
-            sub={card.rent_source === "market_zip" ? "ZIP-level estimate" : card.rent_source === "property_avm" ? "Property estimate" : undefined}
+            sub={card.rent_source === "market_zip" ? "ZIP level estimate" : card.rent_source === "property_avm" ? "Property estimate" : undefined}
           />
           <Metric
             label="Price per sqft"
@@ -104,21 +104,21 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
           <dl className="grid grid-cols-3 gap-x-3 gap-y-2">
             <Metric label="Gross yield" value={pct(summary.gross_yield_pct)} hint="Annual rent ÷ price" />
             <Metric label="Cap rate" value={pct(summary.cap_rate_pct)} hint="Net operating income ÷ price (before financing)" />
-            <Metric label="Cash-on-cash" value={pct(summary.cash_on_cash_pct)} tone={signTone(summary.cash_on_cash_pct)} hint="Annual pre-tax cash flow ÷ total cash invested" />
+            <Metric label="Cash on cash" value={pct(summary.cash_on_cash_pct)} tone={signTone(summary.cash_on_cash_pct)} hint="Annual pre-tax cash flow ÷ total cash invested" />
             <Metric label="Cash flow" value={`${usd(summary.monthly_cash_flow)}/mo`} tone={signTone(summary.monthly_cash_flow)} hint="After operating expenses and debt service" />
-            <Metric label="Upfront cash" value={usd(summary.total_cash_invested)} hint="Down payment, closing, reserves and set-up costs" />
+            <Metric label="Upfront cash" value={usd(summary.total_cash_invested)} hint="Down payment, closing, reserves and setup costs" />
             <Metric label="DSCR" value={summary.dscr != null ? `${Number(summary.dscr).toFixed(2)}×` : "N/A"} hint="Net operating income ÷ annual mortgage payments (1.25× or more is comfortable)" />
           </dl>
         ) : (
-          <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-            Returns can&apos;t be calculated yet — no rent estimate is available. Open the analysis to request one or enter
-            your own.
+          <p className="caption-5 rounded-lg border border-dashed px-3 py-2 text-muted-foreground">
+            Returns can&apos;t be calculated yet because no rent estimate is available. Open the analysis to request one or
+            enter your own.
           </p>
         )}
 
         <RuleBadges badges={card.badges} max={4} />
 
-        <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
+        <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
           <Button asChild size="sm">
             <Link href={href}>
               <LineChart /> View analysis
@@ -143,7 +143,7 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
               </Button>
             </Hint>
           ) : (
-            <Hint content={card.is_demo ? "Demo property — there is no real listing to open." : `${card.listing_source ?? "The data provider"} does not supply a link to the original listing page.`}>
+            <Hint content={card.is_demo ? "Demo property: there is no real listing to open." : `${card.listing_source ?? "The data provider"} does not supply a link to the original listing page.`}>
               <span tabIndex={0}>
                 <Button variant="outline" size="icon" className="size-8" disabled aria-label="Original listing link unavailable">
                   <ExternalLink />
@@ -151,7 +151,7 @@ export function PropertyCard({ card, strategy, selected, onHover, layout = "grid
               </span>
             </Hint>
           )}
-          <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground" title={card.last_seen_at ?? undefined}>
+          <span className="caption-5 ml-auto inline-flex items-center gap-1 text-muted-foreground" title={card.last_seen_at ?? undefined}>
             <Clock className="size-3" aria-hidden />
             {card.listing_source ?? "Listing"} · seen {relativeTime(card.last_seen_at)}
           </span>

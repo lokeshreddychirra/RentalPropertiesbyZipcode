@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Search } from "lucide-react";
+import { BarChart3, Search } from "@/components/ui/icons";
 import { SERIES, SimpleBarChart, TrendChart } from "@/components/property/charts";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton, Table, Td, Th } from "@/components/ui/card";

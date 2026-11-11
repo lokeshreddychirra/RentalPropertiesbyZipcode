@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, Bot, CheckCircle2, CircleHelp, ListChecks, ShieldAlert, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, CircleHelp, ListChecks, ShieldAlert, Sparkles, TrendingDown, TrendingUp } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Skeleton, Table, Td, Th } from "@/components/ui/card";
 import { Field, Input, NumberInput } from "@/components/ui/form";

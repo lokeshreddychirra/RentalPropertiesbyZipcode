@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, BellOff, Bookmark, FolderPlus, History, Play, Search, Trash2 } from "lucide-react";
+import { Bell, BellOff, Bookmark, FolderPlus, History, Play, Search, Trash2 } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { PropertyCard } from "@/components/search/property-card";
 import { CompareTray } from "@/components/search/search-experience";

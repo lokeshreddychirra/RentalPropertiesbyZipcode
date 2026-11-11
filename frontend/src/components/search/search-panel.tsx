@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, MapPin, Search, X } from "lucide-react";
+import { ChevronDown, MapPin, Search, X } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Alert, Card } from "@/components/ui/card";
 import { Field, Input, NumberInput, Select } from "@/components/ui/form";
@@ -15,7 +15,7 @@ const PROPERTY_TYPES: { value: string; label: string }[] = [
   { value: "single_family", label: "Single family" },
   { value: "condo", label: "Condo" },
   { value: "townhouse", label: "Townhouse" },
-  { value: "multi_family", label: "Multi-family" },
+  { value: "multi_family", label: "Multifamily" },
   { value: "manufactured", label: "Manufactured" },
 ];
 
@@ -48,8 +48,8 @@ function FilterButton({ label, active, onApply, onClear, width, children }: Filt
         <button
           type="button"
           className={cn(
-            "inline-flex h-8 items-center gap-1 rounded-full border px-3 text-xs font-medium transition-colors",
-            active ? "border-primary bg-primary text-primary-foreground" : "bg-card text-foreground hover:border-foreground/30",
+            "caption-4 inline-flex h-8 items-center gap-1 rounded-full border px-3 transition-[color,background-color,border-color,transform] active:scale-[0.98]",
+            active ? "border-primary bg-primary text-primary-foreground" : "bg-card text-foreground hover:border-foreground/30 hover:bg-muted",
           )}
         >
           {active ?? label}
@@ -58,7 +58,7 @@ function FilterButton({ label, active, onApply, onClear, width, children }: Filt
       </PopoverTrigger>
       <PopoverContent className={width}>
         <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+          <p className="caption-3 text-muted-foreground">{label}</p>
           {children}
           <div className="flex justify-between gap-2 pt-1">
             <Button type="button" variant="ghost" size="sm" onClick={onClear} disabled={!active}>
@@ -110,13 +110,13 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
     const parsed = parseZips(next.location);
     if (parsed.error) return setError(parsed.error);
     if (!parsed.zip_codes.length) {
-      if (!quiet) setError("Enter a 5-digit ZIP code — for example 38116.");
+      if (!quiet) setError("Enter a five digit ZIP code, for example 38116.");
       return;
     }
     if (parsed.zip_codes.length > 1) {
       return setError("Search one ZIP code at a time.");
     }
-    if (next.minPrice != null && next.maxPrice != null && next.minPrice > next.maxPrice) return setError("Minimum price is higher than maximum price.");
+    if (next.minPrice != null && next.maxPrice != null && next.minPrice > next.maxPrice) return setError("The minimum price is higher than the maximum price.");
     if (next.minYear != null && next.maxYear != null && next.minYear > next.maxYear) return setError("“Built from” is later than “built to”.");
     setError(null);
     onSearch(formToFilters(next));
@@ -140,29 +140,29 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
           run();
         }}
         aria-label="Property search"
-        className="space-y-3 p-3 sm:p-4"
+        className="space-y-3 p-3"
       >
         <div className="flex gap-2">
           <div className="relative min-w-0 flex-1">
-            <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <MapPin className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" aria-hidden />
             <Input
               id="f-location"
               aria-label="ZIP code"
-              placeholder="ZIP code — e.g. 38116"
+              placeholder="ZIP code, like 38116"
               inputMode="numeric"
               maxLength={5}
               value={form.location}
               onChange={(e) => set("location", e.target.value)}
               autoComplete="postal-code"
-              className="h-11 pl-9 text-[15px]"
+              className="body-3 h-12 rounded-lg pl-12"
             />
           </div>
-          <Button type="submit" size="lg" disabled={busy} className="h-11 px-5">
-            <Search /> <span className="hidden sm:inline">{busy ? "Searching…" : "Search"}</span>
+          <Button type="submit" size="lg" disabled={busy} className="h-12 px-4" aria-label={busy ? "Searching" : "Find rentals"}>
+            <Search /> <span className="hidden sm:inline">{busy ? "Searching…" : "Find rentals"}</span>
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           <FilterButton
             label="Price"
             active={rangeLabel(form.minPrice, form.maxPrice, money)}
@@ -218,7 +218,7 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
           >
             <div className="space-y-1">
               {PROPERTY_TYPES.map(({ value, label }) => (
-                <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted">
+                <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 hover:bg-muted">
                   <input
                     type="checkbox"
                     checked={types.includes(value)}
@@ -245,7 +245,7 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
                 <NumberInput id="f-max-year" placeholder="Any" value={form.maxYear} onValueChange={(v) => set("maxYear", v === null ? null : Math.round(v))} min={1700} max={2100} />
               </Field>
             </div>
-            <p className="text-[11px] text-muted-foreground">Homes with no recorded build year are hidden while this filter is on.</p>
+            <p className="caption-5 text-muted-foreground">Homes with no recorded build year are hidden while this filter is on.</p>
           </FilterButton>
 
           <FilterButton
@@ -262,7 +262,7 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
               <Field label="Min cash flow / mo" htmlFor="f-cf">
                 <NumberInput id="f-cf" prefix="$" placeholder="Any" value={form.minCashFlow} onValueChange={(v) => set("minCashFlow", v)} />
               </Field>
-              <Field label="Min cash-on-cash" htmlFor="f-coc">
+              <Field label="Min cash on cash" htmlFor="f-coc">
                 <NumberInput id="f-coc" suffix="%" placeholder="Any" value={form.minCashOnCash} onValueChange={(v) => set("minCashOnCash", v)} />
               </Field>
               <Field label="Min cap rate" htmlFor="f-cap">
@@ -272,7 +272,7 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
                 <NumberInput id="f-net" suffix="%" placeholder="Any" value={form.minNetYield} onValueChange={(v) => set("minNetYield", v)} />
               </Field>
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">Calculated with 25% down at 7% (default financing) as a long-term rental.</p>
+            <p className="caption-5 text-pretty text-muted-foreground">Calculated with 25% down at 7% (default financing) as a long term rental.</p>
           </FilterButton>
 
           <FilterButton
@@ -294,7 +294,7 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
           {dirty ? (
             <button
               type="button"
-              className="inline-flex h-8 items-center gap-1 rounded-full px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+              className="caption-4 inline-flex h-8 items-center gap-1 rounded-full px-2 text-muted-foreground transition-colors hover:text-foreground"
               onClick={() => {
                 setForm({ ...EMPTY_FORM });
                 setError(null);
@@ -306,7 +306,7 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
           ) : null}
 
           {status?.data_mode === "demo" ? (
-            <span className="ml-auto hidden text-[11px] text-muted-foreground lg:inline">
+            <span className="caption-5 ml-auto hidden text-muted-foreground lg:inline">
               Demo ZIPs: {status.demo_markets.slice(0, 4).map((m) => `${m.zip_codes.split(",")[0]} ${m.city}`).join(" · ")}
             </span>
           ) : null}

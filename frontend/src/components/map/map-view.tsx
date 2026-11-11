@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import Supercluster from "supercluster";
-import { Check, PenLine, Trash2, X } from "lucide-react";
+import { Check, PenLine, Trash2, X } from "@/components/ui/icons";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Button } from "@/components/ui/button";

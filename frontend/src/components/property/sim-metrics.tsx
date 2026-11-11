@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp } from "@/components/ui/icons";
 import { Hint } from "@/components/ui/overlays";
 import type { QuickLtr } from "@/lib/ltr-model";
 import type { StrategyResult } from "@/lib/types";

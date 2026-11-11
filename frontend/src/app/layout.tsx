@@ -3,7 +3,7 @@ import { Toaster } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { TooltipProvider } from "@/components/ui/overlays";
 import { Providers } from "@/lib/store";
-import "@fontsource-variable/inter";
+import "@fontsource-variable/geist";
 import "./globals.css";
 
 export const metadata: Metadata = {
