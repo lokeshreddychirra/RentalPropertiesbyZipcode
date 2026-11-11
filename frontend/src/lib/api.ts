@@ -130,7 +130,7 @@ export const api = {
   adminUsers: (q?: string) => request<AdminUsers>(`/admin/users${qs({ q: q || undefined })}`),
   updateUser: (id: string, body: { plan?: string; role?: string; is_active?: boolean; reset_usage?: boolean }) => request<AdminUser>(`/admin/users/${id}`, { method: "PATCH", json: body }),
   adminPlans: () => request<PlanInfo[]>("/admin/plans"),
-  updatePlan: (key: string, body: { price_usd: number; zip_searches: number | null; property_reports: number | null; zips_per_search: number }) =>
+  updatePlan: (key: string, body: { price_usd: number; zip_searches: number | null; property_reports: number | null }) =>
     request<PlanInfo>(`/admin/plans/${key}`, { method: "PUT", json: body }),
 
   // --- search

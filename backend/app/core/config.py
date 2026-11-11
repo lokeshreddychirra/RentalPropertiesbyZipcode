@@ -97,7 +97,6 @@ class Settings(BaseSettings):
     plan_premium_price_usd: Decimal = Decimal("49")
     plan_premium_zip_searches: int = 50
     plan_premium_property_reports: int = 250
-    plan_premium_zips_per_search: int = 5
     # Online payments (Stripe Checkout + Billing Portal). Without these, an administrator assigns plans.
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None

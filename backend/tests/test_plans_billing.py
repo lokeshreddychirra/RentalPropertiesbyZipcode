@@ -57,7 +57,8 @@ async def test_free_plan_allows_one_zip_and_paid_plans_raise_the_limit(app, clie
         assert blocked.status_code == 402
         error = blocked.json()["error"]
         assert error["code"] == "plan_limit" and error["details"] == {"plan": "free", "kind": "ZIP code searches", "used": 1, "limit": 1}
-        assert (await _search(user, "38116", "38118")).json()["error"]["details"]["kind"] == "zips per search"
+        two = await _search(user, "38116", "38118")
+        assert two.status_code == 422 and two.json()["error"]["code"] == "one_zip"
 
         account = (await user.get(f"{API}/account")).json()
         assert account["zip_searches_used"] == 1 and account["zip_searches_limit"] == 1 and account["searched_zips"] == ["30269"]
@@ -77,10 +78,11 @@ async def test_free_plan_allows_one_zip_and_paid_plans_raise_the_limit(app, clie
         assert (await _search(user, "38116")).status_code == 202  # Pro: monthly allowance, separate period
         account = (await user.get(f"{API}/account")).json()
         assert account["plan"] == "pro" and account["monthly"] and account["zip_searches_limit"] == get_settings().plan_pro_zip_searches
-        assert (await _search(user, "38116", "38118")).status_code == 402  # Pro searches one ZIP at a time
+        assert (await _search(user, "38116", "38118")).status_code == 422  # every plan searches one ZIP at a time
 
         await client.patch(f"{API}/admin/users/{target['id']}", json={"plan": "premium"})
-        assert (await _search(user, "38116", "38118")).status_code == 202
+        assert (await _search(user, "38116", "38118")).status_code == 422  # Premium too
+        assert (await _search(user, "38118")).status_code == 202
     finally:
         await user.aclose()
 
@@ -199,17 +201,18 @@ async def test_admin_configures_plan_allowances(app, client, live_quotas):
     assert original["free"]["zip_searches"] == get_settings().plan_free_zip_searches
     user, _ = await _new_user(app)
     try:
-        updated = await client.put(f"{API}/admin/plans/free", json={"price_usd": 0, "zip_searches": 2, "property_reports": 5, "zips_per_search": 2})
+        updated = await client.put(f"{API}/admin/plans/free", json={"price_usd": 0, "zip_searches": 2, "property_reports": 5})
         assert updated.status_code == 200 and updated.json()["zip_searches"] == 2
-        assert (await _search(user, "30269", "38116")).status_code == 202  # 2 ZIPs, 2 per search now allowed
+        assert (await _search(user, "30269")).status_code == 202
+        assert (await _search(user, "38116")).status_code == 202  # second ZIP now allowed
         assert (await _search(user, "46201")).status_code == 402
         public = {p["key"]: p for p in (await user.get(f"{API}/account/plans")).json()["plans"]}
-        assert public["free"]["zip_searches"] == 2 and public["free"]["zips_per_search"] == 2
+        assert public["free"]["zip_searches"] == 2 and public["free"]["zips_per_search"] == 1
         premium = await client.put(f"{API}/admin/plans/premium", json={"price_usd": 59, "zip_searches": None, "property_reports": 400, "zips_per_search": 8})
-        assert premium.json()["zip_searches"] is None and "8 ZIP codes" in " ".join(premium.json()["features"])
+        assert premium.json()["zip_searches"] is None and premium.json()["zips_per_search"] == 1  # always one ZIP per search
         assert (await user.put(f"{API}/admin/plans/free", json={"price_usd": 0, "zip_searches": 99, "zips_per_search": 1})).status_code == 403
-        assert (await client.put(f"{API}/admin/plans/free", json={"price_usd": 0, "zip_searches": 1, "zips_per_search": 0})).status_code == 422
+        assert (await client.put(f"{API}/admin/plans/free", json={"price_usd": -1, "zip_searches": 1})).status_code == 422
     finally:
         for key, plan in original.items():
-            await client.put(f"{API}/admin/plans/{key}", json={k: plan[k] for k in ("price_usd", "zip_searches", "property_reports", "zips_per_search")})
+            await client.put(f"{API}/admin/plans/{key}", json={k: plan[k] for k in ("price_usd", "zip_searches", "property_reports")})
         await user.aclose()

@@ -166,13 +166,13 @@ function PlanBreakdown({ data }: { data: AdminUsers }) {
   );
 }
 
-type PlanDraft = { price_usd: number | null; zip_searches: number | null; property_reports: number | null; zips_per_search: number | null };
+type PlanDraft = { price_usd: number | null; zip_searches: number | null; property_reports: number | null };
 
 /** Edit each plan's price and allowances. Empty search/report fields mean unlimited. */
 function PlanEditor({ plan }: { plan: PlanInfo }) {
   const client = useQueryClient();
   const initial = React.useMemo<PlanDraft>(
-    () => ({ price_usd: Number(plan.price_usd), zip_searches: plan.zip_searches ?? null, property_reports: plan.property_reports ?? null, zips_per_search: plan.zips_per_search }),
+    () => ({ price_usd: Number(plan.price_usd), zip_searches: plan.zip_searches ?? null, property_reports: plan.property_reports ?? null }),
     [plan],
   );
   const [draft, setDraft] = React.useState<PlanDraft>(initial);
@@ -189,7 +189,6 @@ function PlanEditor({ plan }: { plan: PlanInfo }) {
         price_usd: draft.price_usd ?? 0,
         zip_searches: draft.zip_searches === null ? null : Math.round(draft.zip_searches),
         property_reports: draft.property_reports === null ? null : Math.round(draft.property_reports),
-        zips_per_search: Math.max(1, Math.round(draft.zips_per_search ?? 1)),
       });
       toast.success(`${plan.name} plan updated`);
       await Promise.all([client.invalidateQueries({ queryKey: ["admin-plans"] }), client.invalidateQueries({ queryKey: ["plans"] }), client.invalidateQueries({ queryKey: ["account"] })]);
@@ -209,9 +208,6 @@ function PlanEditor({ plan }: { plan: PlanInfo }) {
       <div className="grid grid-cols-2 gap-3">
         <Field label="Price / month" htmlFor={`p-${plan.key}-price`}>
           <NumberInput id={`p-${plan.key}-price`} prefix="$" value={draft.price_usd} onValueChange={(v) => set("price_usd", v)} min={0} disabled={plan.key === "free"} />
-        </Field>
-        <Field label="ZIPs per search" htmlFor={`p-${plan.key}-zps`}>
-          <NumberInput id={`p-${plan.key}-zps`} value={draft.zips_per_search} onValueChange={(v) => set("zips_per_search", v)} min={1} max={25} />
         </Field>
         <Field label={`ZIP searches (${period})`} htmlFor={`p-${plan.key}-zips`} hint="Empty = unlimited">
           <NumberInput id={`p-${plan.key}-zips`} placeholder="Unlimited" value={draft.zip_searches} onValueChange={(v) => set("zip_searches", v)} min={0} />

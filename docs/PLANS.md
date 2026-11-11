@@ -8,18 +8,18 @@ money with RentCast:
 |---|---|---|---|
 | Price | $0 | $19 / month | $49 / month |
 | ZIP code searches | 1 (lifetime) | 15 / month | 50 / month |
-| ZIP codes per search | 1 | 1 | 5 |
 | Property reports | 3 (lifetime) | 75 / month | 250 / month |
 
 * **ZIP code search** — each *different* ZIP searched in the period. Re-running a ZIP already
   searched, changing filters or sorting never counts.
 * **Property report** — a property-level rent/value estimate or tax record that had to be bought
   from RentCast when a property was opened. Properties already unlocked, or already cached, are free.
+* Every search covers exactly **one ZIP code**, on every plan (administrators included).
 * Free allowances are for the lifetime of the account; paid allowances reset on the 1st of each
   month (UTC). Administrators are unlimited. Quotas apply in live data mode only.
 
-**Changing plans.** Administrators edit every plan's price, ZIP searches, property reports and ZIPs
-per search under **Users & plans** (`/admin/users`); changes apply immediately. The environment
+**Changing plans.** Administrators edit every plan's price, ZIP searches and property reports
+under **Users & plans** (`/admin/users`); changes apply immediately. The environment
 variables `PLAN_*` (see `.env.example`) are only the defaults. Administrators can also move any
 user between plans by hand, reset a user's usage, or disable an account.
 

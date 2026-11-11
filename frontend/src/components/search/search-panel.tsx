@@ -7,7 +7,7 @@ import { Alert, Card } from "@/components/ui/card";
 import { Field, Input, NumberInput, Select } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
 import { EMPTY_FORM, filtersToForm, formToFilters, parseZips, type FilterForm } from "@/lib/filters";
-import { useAccount, useStatus } from "@/lib/store";
+import { useStatus } from "@/lib/store";
 import type { SearchFilters, StrategyFilter } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -97,8 +97,6 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
   const [form, setForm] = React.useState<FilterForm>(() => filtersToForm(initial));
   const [error, setError] = React.useState<string | null>(null);
   const { data: status } = useStatus();
-  const { data: account } = useAccount();
-  const maxZips = account?.zips_per_search ?? 1;
   const initialKey = JSON.stringify(initial ?? null);
   const formRef = React.useRef(form);
   formRef.current = form;
@@ -120,8 +118,8 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
       if (!quiet) setError("Enter a 5-digit ZIP code — for example 38116.");
       return;
     }
-    if (parsed.zip_codes.length > maxZips) {
-      return setError(maxZips === 1 ? "Your plan searches one ZIP code at a time. Premium searches several at once." : `Your plan searches up to ${maxZips} ZIP codes at a time.`);
+    if (parsed.zip_codes.length > 1) {
+      return setError("Search one ZIP code at a time.");
     }
     if (next.minPrice != null && next.maxPrice != null && next.minPrice > next.maxPrice) return setError("Minimum price is higher than maximum price.");
     if (next.minYear != null && next.maxYear != null && next.minYear > next.maxYear) return setError("“Built from” is later than “built to”.");
@@ -156,8 +154,9 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
             <Input
               id="f-location"
               aria-label="ZIP code"
-              placeholder={maxZips > 1 ? "ZIP code — e.g. 38116 (separate several with commas)" : "ZIP code — e.g. 38116"}
+              placeholder="ZIP code — e.g. 38116"
               inputMode="numeric"
+              maxLength={5}
               value={form.location}
               onChange={(e) => set("location", e.target.value)}
               autoComplete="postal-code"

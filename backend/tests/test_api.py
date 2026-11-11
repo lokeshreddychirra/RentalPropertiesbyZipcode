@@ -70,11 +70,11 @@ async def test_sorting_uses_calculated_metrics(client, sort, key, descending):
     assert all(i >= len(values) for i in unavailable)  # unranked properties always last
 
 
-ATLANTA_ZIPS = ["30310", "30315", "30318", "30331"]
+ATLANTA_ZIP = ["30310"]
 
 
 async def test_metric_and_listing_filters(client):
-    filters = {"zip_codes": ATLANTA_ZIPS, "min_price": 150000, "max_price": 400000, "min_gross_yield": 8, "min_beds": 3, "strategy": "ltr"}
+    filters = {"zip_codes": ATLANTA_ZIP, "min_price": 150000, "max_price": 400000, "min_gross_yield": 8, "min_beds": 3, "strategy": "ltr"}
     job = await run_search(client, filters)
     data = await results(client, job["id"], page_size=200)
     assert data["total"] > 0
@@ -102,9 +102,9 @@ async def test_identical_search_is_served_from_cache(client):
 
 
 async def test_map_points_and_viewport_and_drawn_area_filters(client):
-    job = await run_search(client, {"zip_codes": ATLANTA_ZIPS})
+    job = await run_search(client, {"zip_codes": ATLANTA_ZIP})
     points = (await client.get(f"{API}/searches/jobs/{job['id']}/map")).json()
-    assert points["total"] == job["result_count"] > 100
+    assert points["total"] == job["result_count"] > 20
 
     p = points["points"][0]
     box = f"{p['longitude'] - 0.01},{p['latitude'] - 0.01},{p['longitude'] + 0.01},{p['latitude'] + 0.01}"
@@ -142,6 +142,8 @@ async def test_validation_errors_are_structured(client):
     error = response.json()["error"]
     assert error["code"] == "validation_error" and "location" in str(error["details"]).lower()
     assert (await client.post(f"{API}/searches/run", json={"filters": {"zip_codes": ["3026"]}})).status_code == 422
+    two = await client.post(f"{API}/searches/run", json={"filters": {"zip_codes": ["30269", "38116"]}})
+    assert two.status_code == 422 and two.json()["error"]["code"] == "one_zip"  # admins included
     assert (await client.get(f"{API}/properties/search", params={"zip_codes": "abc"})).status_code == 422
     missing = await client.get(f"{API}/properties/00000000-0000-0000-0000-000000000000")
     assert missing.status_code == 404 and missing.json()["error"]["code"] == "not_found"
@@ -224,8 +226,11 @@ async def test_str_never_recommended_where_prohibited(client):
 
 
 async def test_unknown_legality_recommendation_is_conditional(client):
-    job = await run_search(client, {"zip_codes": ["32413", "32808"]})
-    data = await results(client, job["id"], page_size=200)
+    items = []
+    for zip_code in ("32413", "32808"):  # one ZIP per search
+        job = await run_search(client, {"zip_codes": [zip_code]})
+        items += (await results(client, job["id"], page_size=200))["items"]
+    data = {"items": items}
     unknown_str = [c for c in data["items"] if c["legality_status"] == "unknown" and c["primary_strategy"] == "str"]
     assert unknown_str and all(c["recommendation_conditional"] for c in unknown_str)
     permitted_str = [c for c in data["items"] if c["legality_status"] == "permitted" and c["primary_strategy"] == "str"]

@@ -30,7 +30,8 @@ from app.schemas.search import SearchFilters
 PLAN_KEYS = ("free", "pro", "premium")
 ZIP_SEARCH = "zip_search"
 PROPERTY_REPORT = "property_report"
-ADMIN_ZIPS_PER_SEARCH = 25
+# Every search covers exactly one ZIP code, for every plan (keeps provider costs predictable).
+ZIPS_PER_SEARCH = 1
 
 
 @dataclass(frozen=True)
@@ -57,18 +58,10 @@ async def refresh(session: AsyncSession, *, force: bool = False) -> None:
         return
     rows = (await session.execute(select(PlanConfig))).scalars().all()
     _overrides = {
-        row.key: {"price_usd": row.price_usd, "zip_searches": row.zip_searches, "property_reports": row.property_reports, "zips_per_search": row.zips_per_search}
+        row.key: {"price_usd": row.price_usd, "zip_searches": row.zip_searches, "property_reports": row.property_reports}
         for row in rows
     }
     _loaded_at = time.monotonic()
-
-
-def _features(key: str, zips_per_search: int) -> tuple[str, ...]:
-    if key == "free":
-        return ("Full analysis of every listing in the ZIP", "Long-term vs short-term comparison", "Save properties")
-    if key == "pro":
-        return ("Everything in Free", "Saved searches", "CSV and PDF export", "Property comparison")
-    return ("Everything in Pro", f"Search up to {zips_per_search} ZIP codes at once", "Saved-search alerts", "Priority support")
 
 
 def default_plans() -> dict[str, Plan]:
@@ -76,16 +69,16 @@ def default_plans() -> dict[str, Plan]:
     s = get_settings()
     return {
         "free": Plan(
-            "free", "Free", Decimal("0"), s.plan_free_zip_searches, s.plan_free_property_reports, 1, False,
+            "free", "Free", Decimal("0"), s.plan_free_zip_searches, s.plan_free_property_reports, ZIPS_PER_SEARCH, False,
             ("Full analysis of every listing in the ZIP", "Long-term vs short-term comparison", "Save properties"),
         ),
         "pro": Plan(
-            "pro", "Pro", s.plan_pro_price_usd, s.plan_pro_zip_searches, s.plan_pro_property_reports, 1, True,
+            "pro", "Pro", s.plan_pro_price_usd, s.plan_pro_zip_searches, s.plan_pro_property_reports, ZIPS_PER_SEARCH, True,
             ("Everything in Free", "Saved searches", "CSV and PDF export", "Property comparison"),
         ),
         "premium": Plan(
-            "premium", "Premium", s.plan_premium_price_usd, s.plan_premium_zip_searches, s.plan_premium_property_reports, s.plan_premium_zips_per_search, True,
-            ("Everything in Pro", f"Search up to {s.plan_premium_zips_per_search} ZIP codes at once", "Saved-search alerts", "Priority support"),
+            "premium", "Premium", s.plan_premium_price_usd, s.plan_premium_zip_searches, s.plan_premium_property_reports, ZIPS_PER_SEARCH, True,
+            ("Everything in Pro", "Most ZIP codes and property reports", "Saved-search alerts", "Priority support"),
         ),
     }
 
@@ -97,7 +90,6 @@ def plans() -> dict[str, Plan]:
         override = _overrides.get(key)
         if override:
             plan = replace(plan, **override)
-            plan = replace(plan, features=_features(key, plan.zips_per_search))
         out[key] = plan
     return out
 
@@ -151,14 +143,8 @@ def validate_zip_only(filters: SearchFilters, user: User) -> list[str]:
         raise AppError("Search by ZIP code — city, state, county, radius and map-area searches are not available yet.", code="zip_only", status_code=422)
     if not filters.zip_codes:
         raise AppError("Enter at least one 5-digit ZIP code.", code="validation_error", status_code=422)
-    allowed = ADMIN_ZIPS_PER_SEARCH if is_unlimited(user) else plan_for(user).zips_per_search
-    if len(filters.zip_codes) > allowed:
-        plan = plan_for(user)
-        raise PlanLimitError(
-            f"The {plan.name} plan searches {allowed} ZIP code{'s' if allowed != 1 else ''} at a time."
-            + (" Premium searches several at once." if plan.key != "premium" else ""),
-            details={"plan": plan.key, "kind": "zips per search", "used": len(filters.zip_codes), "limit": allowed},
-        )
+    if len(filters.zip_codes) > ZIPS_PER_SEARCH:
+        raise AppError("Search one ZIP code at a time.", code="one_zip", status_code=422)
     return list(filters.zip_codes)
 
 
@@ -212,7 +198,7 @@ async def account_summary(session: AsyncSession, user: User) -> dict:
         "zip_searches_limit": None if unlimited else plan.zip_searches,
         "property_reports_used": await usage_count(session, user, PROPERTY_REPORT, period),
         "property_reports_limit": None if unlimited else plan.property_reports,
-        "zips_per_search": ADMIN_ZIPS_PER_SEARCH if unlimited else plan.zips_per_search,
+        "zips_per_search": ZIPS_PER_SEARCH,
         "searched_zips": sorted(await used_items(session, user, ZIP_SEARCH, period)),
         "quotas_apply": quotas_apply(),
         "plan_status": user.plan_status,

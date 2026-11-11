@@ -181,7 +181,7 @@ class PlanUpdate(BaseModel):
     price_usd: Decimal = Field(ge=0, le=10000)
     zip_searches: int | None = Field(default=None, ge=0, le=100000, description="Distinct ZIP codes per period; null = unlimited")
     property_reports: int | None = Field(default=None, ge=0, le=100000, description="Paid property reports per period; null = unlimited")
-    zips_per_search: int = Field(ge=1, le=plans.ADMIN_ZIPS_PER_SEARCH)
+    zips_per_search: int | None = Field(default=None, description="Ignored: every search covers exactly one ZIP code")
 
 
 @router.get("/admin/plans", response_model=list[PlanOut])
@@ -200,7 +200,7 @@ async def admin_update_plan(plan_key: Literal["free", "pro", "premium"], body: P
     if row is None:
         row = PlanConfig(key=plan_key)
         session.add(row)
-    row.price_usd, row.zip_searches, row.property_reports, row.zips_per_search = body.price_usd, body.zip_searches, body.property_reports, body.zips_per_search
+    row.price_usd, row.zip_searches, row.property_reports, row.zips_per_search = body.price_usd, body.zip_searches, body.property_reports, plans.ZIPS_PER_SEARCH
     await session.commit()
     await plans.refresh(session, force=True)
     return _plan_out(plans.plans()[plan_key])
