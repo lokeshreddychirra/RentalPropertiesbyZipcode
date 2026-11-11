@@ -325,9 +325,11 @@ interface Props {
   heading?: React.ReactNode | ((active: boolean) => React.ReactNode);
   /** Rendered above results when no search has been run yet. */
   idle?: React.ReactNode;
+  /** Shown beside the heading and search box (large screens) before any search is run. */
+  heroAside?: React.ReactNode;
 }
 
-export function SearchExperience({ basePath, defaultView = "list", heading, idle }: Props) {
+export function SearchExperience({ basePath, defaultView = "list", heading, idle, heroAside }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -486,15 +488,32 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
     />
   );
 
+  const headingNode = typeof heading === "function" ? heading(!!filters) : heading;
+  const panel = (
+    <SearchPanel
+      initial={filters}
+      busy={running}
+      onSearch={(next) => navigate({ filters: next })}
+      onReset={() => navigate({ filters: null, sort: null, page: null })}
+    />
+  );
+
   return (
-    <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-6 pb-24 lg:px-6">
-      {typeof heading === "function" ? heading(!!filters) : heading}
-      <SearchPanel
-        initial={filters}
-        busy={running}
-        onSearch={(next) => navigate({ filters: next })}
-        onReset={() => navigate({ filters: null, sort: null, page: null })}
-      />
+    <div className="mx-auto max-w-[1440px] space-y-6 px-4 pb-24 pt-4 lg:px-6">
+      {!filters && heroAside ? (
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          <div className="min-w-0 space-y-6 lg:pt-6">
+            {headingNode}
+            {panel}
+          </div>
+          <div className="min-w-0">{heroAside}</div>
+        </div>
+      ) : (
+        <>
+          {headingNode}
+          {panel}
+        </>
+      )}
 
       {!filters ? idle : null}
       {needsAccount ? <SignUpGate /> : null}

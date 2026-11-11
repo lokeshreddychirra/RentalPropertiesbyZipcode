@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { HeroScene } from "@/components/marketing/hero-scene";
 import { Reveal, TaglineReveal } from "@/components/marketing/reveal";
 import { SearchExperience } from "@/components/search/search-experience";
 import { Button } from "@/components/ui/button";
@@ -73,9 +74,9 @@ function Hero({ compact }: { compact: boolean }) {
   }
   const demo = status?.data_mode === "demo";
   return (
-    <div className="pt-4 lg:pt-8">
+    <div>
       {/* Two lines, broken where the thought breaks; on phones the text flows and balances. */}
-      <h1 className="heading-4 hero-gradient max-w-[680px] text-balance pb-1 sm:heading-3 lg:heading-2">
+      <h1 className="heading-4 hero-gradient max-w-[680px] text-balance pb-1 sm:heading-3 lg:heading-4 xl:heading-2">
         Know what a rental earns <br className="hidden sm:block" />
         before you make an offer
       </h1>
@@ -87,6 +88,33 @@ function Hero({ compact }: { compact: boolean }) {
         {!user ? " · Your first ZIP search is free" : null}
       </p>
     </div>
+  );
+}
+
+/** 3D neighbourhood with floating glass cards. The figures are an illustration, and say so. */
+function HeroVisual() {
+  return (
+    <figure className="relative">
+      <div className="relative h-72 sm:h-80 lg:h-[400px]">
+        <HeroScene className="absolute inset-0" />
+        <div className="glass-card float-a absolute left-0 top-6 sm:left-4" aria-hidden>
+          <p className="caption-5 text-muted-foreground">Cash flow</p>
+          <p className="tnum body-1 text-positive">+$612 / mo</p>
+        </div>
+        <div className="glass-card float-b absolute right-0 top-1/3 sm:right-2" aria-hidden>
+          <p className="caption-5 text-muted-foreground">Cash on cash</p>
+          <p className="tnum body-1">14.7%</p>
+        </div>
+        <div className="glass-card float-c absolute bottom-6 left-6 flex items-center gap-3 sm:left-12" aria-hidden>
+          <span className="tnum caption-3 flex size-10 items-center justify-center rounded-full border-4 border-positive/70 text-positive">88</span>
+          <span>
+            <span className="caption-5 block text-muted-foreground">Investment score</span>
+            <span className="body-4 block">Strong</span>
+          </span>
+        </div>
+      </div>
+      <figcaption className="caption-5 text-center text-muted-foreground">Illustration with example figures</figcaption>
+    </figure>
   );
 }
 
@@ -163,9 +191,9 @@ function QuickStart() {
             <Link
               key={starter.label}
               href={searchHref(starter.filters, { sort: starter.sort, base: "/" })}
-              className="group flex items-center gap-3 rounded-xl border bg-card px-4 py-3 transition-[box-shadow,transform] duration-500 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98]"
+              className="tilt-card group flex items-center gap-3 rounded-xl border bg-card px-4 py-3"
             >
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md">
                 <MapPin className="size-5" aria-hidden />
               </span>
               <span className="min-w-0 flex-1">
@@ -185,8 +213,8 @@ function QuickStart() {
         <div className="grid gap-6 sm:grid-cols-3">
           {BENEFITS.map(({ icon: Icon, title, body }) => (
             <div key={title} className="space-y-2">
-              <span className="flex size-10 items-center justify-center rounded-lg border bg-card">
-                <Icon className="size-5" aria-hidden />
+              <span className="depth-tile flex size-12 items-center justify-center rounded-xl">
+                <Icon className="size-6" aria-hidden />
               </span>
               <h3 className="title-3">{title}</h3>
               <p className="body-6 text-pretty text-muted-foreground">{body}</p>
@@ -205,7 +233,7 @@ function QuickStart() {
             </div>
             <ol className="grid gap-4 lg:grid-cols-3">
               {STEPS.map(({ icon: Icon, title, body }, i) => (
-                <li key={title} className="rounded-xl border bg-card p-6">
+                <li key={title} className="tilt-card rounded-xl border bg-card p-6">
                   <div className="flex items-center gap-3">
                     <span className="caption-3 tnum flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground">{i + 1}</span>
                     <Icon className="size-5 text-muted-foreground" aria-hidden />
@@ -248,7 +276,7 @@ function QuickStart() {
 export default function DashboardPage() {
   return (
     <React.Suspense fallback={<div className="p-6"><Skeleton className="h-40 w-full" /></div>}>
-      <SearchExperience basePath="/" heading={(active) => <Hero compact={active} />} idle={<QuickStart />} />
+      <SearchExperience basePath="/" heading={(active) => <Hero compact={active} />} heroAside={<HeroVisual />} idle={<QuickStart />} />
     </React.Suspense>
   );
 }
