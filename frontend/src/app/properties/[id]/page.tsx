@@ -52,7 +52,22 @@ function Gallery({ detail }: { detail: PropertyDetail }) {
   const images = detail.images;
   return (
     <div className="space-y-2">
-      <PropertyImage id={ctx.id} url={images[active]?.url} type={ctx.property_type} alt={ctx.formatted_address} caption className="aspect-[16/9] w-full rounded-lg border" />
+      {!ctx.is_demo && ctx.formatted_address ? (
+        <a
+          href={zillowUrl(ctx.formatted_address)}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`View photos of ${ctx.formatted_address} on Zillow (opens in a new tab)`}
+          className="group relative block overflow-hidden rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        >
+          <PropertyImage id={ctx.id} url={images[active]?.url} type={ctx.property_type} alt={ctx.formatted_address} className="aspect-[16/9] w-full rounded-lg border transition group-hover:brightness-95" />
+          <span className="absolute left-1/2 top-3 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-card/95 px-3 py-1.5 text-sm font-medium text-foreground shadow-sm ring-1 ring-black/10 group-hover:underline">
+            <ExternalLink className="size-3.5" aria-hidden /> View photos on Zillow
+          </span>
+        </a>
+      ) : (
+        <PropertyImage id={ctx.id} url={images[active]?.url} type={ctx.property_type} alt={ctx.formatted_address} caption className="aspect-[16/9] w-full rounded-lg border" />
+      )}
       {images.length > 1 ? (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {images.slice(0, 12).map((image, i) => (
