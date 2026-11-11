@@ -3,7 +3,6 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { HeroScene } from "@/components/marketing/hero-scene";
 import { TrendingUp } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Alert, Card } from "@/components/ui/card";
@@ -48,8 +47,8 @@ function LoginForm() {
   };
 
   return (
-    <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-6xl items-center gap-8 px-4 py-10 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-      <Card className="w-full max-w-sm justify-self-center p-6 lg:justify-self-start">
+    <div className="flex min-h-[calc(100vh-2rem)] items-center justify-center px-4 py-10">
+      <Card className="w-full max-w-sm p-6">
         <Link href="/" className="mb-6 flex items-center gap-3">
           <span className="btn-brand flex size-9 items-center justify-center rounded-xl">
             <TrendingUp className="size-5" aria-hidden />
@@ -102,13 +101,6 @@ function LoginForm() {
           </Link>
         </p>
       </Card>
-      <div className="hidden lg:block" aria-hidden>
-        <p className="heading-4 hero-gradient max-w-[520px] text-balance">
-          Every home in the ZIP code, <span className="text-brand">priced as a rental</span>
-        </p>
-        <p className="body-6 mt-3 max-w-[520px] text-pretty text-muted-foreground">Cash flow, cap rate and cash on cash for every listing, with a deal simulator for your own numbers.</p>
-        <HeroScene className="mt-4 h-[420px]" />
-      </div>
     </div>
   );
 }
