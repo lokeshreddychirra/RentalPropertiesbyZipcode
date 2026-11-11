@@ -531,7 +531,9 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
                 {data && data.summary.total !== data.total ? <span className="font-normal text-muted-foreground"> of {data.summary.total.toLocaleString()} analysed</span> : null}
               </h2>
               <p className="text-xs text-muted-foreground">
-                {job.listings_fetched?.toLocaleString() ?? 0} listings analysed · ranked by calculated returns
+                {data ? `${data.summary.total.toLocaleString()} of ` : ""}
+                {job.listings_fetched?.toLocaleString() ?? 0} for-sale listings in{" "}
+                {filters?.zip_codes?.length === 1 ? `ZIP ${filters.zip_codes[0]}` : "these ZIP codes"} match your filters · ranked by calculated returns
                 {isAdmin ? (
                   <>
                     {" · "}
