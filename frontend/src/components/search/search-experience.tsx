@@ -601,14 +601,14 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
   );
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-6 px-4 pb-24 pt-4 lg:px-6">
+    <div className="mx-auto max-w-[1440px] space-y-6 px-4 pb-24 pt-2 lg:px-6">
       {!filters && heroAside ? (
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-          <div className="min-w-0 space-y-6 lg:pt-6">
-            {headingNode}
-            {panel}
-          </div>
-          <div className="min-w-0">{heroAside}</div>
+        // Desktop: headline and aside share one compact row, the search panel gets the full width below.
+        // Phones: headline, then search, then the aside, so the search box stays near the top.
+        <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:gap-x-8">
+          <div className="min-w-0 lg:col-start-1 lg:row-start-1">{headingNode}</div>
+          <div className="min-w-0 lg:col-span-2 lg:row-start-2">{panel}</div>
+          <div className="min-w-0 lg:col-start-2 lg:row-start-1">{heroAside}</div>
         </div>
       ) : (
         <>

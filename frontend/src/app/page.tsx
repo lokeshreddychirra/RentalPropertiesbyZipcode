@@ -91,16 +91,14 @@ function FullHero({ demo, guest }: { demo: boolean; guest: boolean }) {
   const free = useFreeSearches();
   return (
     <div>
-      {/* Two lines, broken where the thought breaks; on phones the text flows and balances. */}
-      <h1 className="heading-4 hero-gradient max-w-[680px] text-balance pb-1 sm:heading-3 lg:heading-2">
+      <h1 className="heading-4 hero-gradient text-balance pb-1 lg:heading-3">
         Type a ZIP code. <br className="hidden sm:block" />
         <span className="text-brand">See which homes pay you every month.</span>
       </h1>
-      <p className="body-3 mt-4 max-w-[680px] text-pretty text-muted-foreground">
-        We run the numbers on every home for sale in that ZIP code as a long term rental: rent, taxes, insurance, repairs and the mortgage. Then we rank
-        them by the cash they leave in your pocket.
+      <p className="body-3 mt-3 max-w-[620px] text-pretty text-muted-foreground">
+        We run the numbers on every home for sale there as a long term rental and rank them by the cash they leave in your pocket.
       </p>
-      <p className="caption-4 mt-3 text-pretty text-muted-foreground" data-testid="proof-line">
+      <p className="caption-4 mt-2 text-pretty text-muted-foreground" data-testid="proof-line">
         {demo ? "Demo mode: sample listings for a set of demo ZIP codes" : "Live listings and rents from RentCast · Every home analysed, not a sample"}
         {guest ? ` · ${freeSearchesLabel(free)}, no card needed` : null}
       </p>
@@ -108,7 +106,7 @@ function FullHero({ demo, guest }: { demo: boolean; guest: boolean }) {
   );
 }
 
-/** Investing wisdom beside the hero: one line at a time, rotating gently. */
+/** Investing wisdom beside the headline: one line at a time, rotating gently. */
 const QUOTES: { text: string; by?: string }[] = [
   { text: "Don't wait to buy real estate. Buy real estate and wait.", by: "Investor proverb" },
   { text: "You make your money when you buy, not when you sell.", by: "Investor proverb" },
@@ -132,7 +130,7 @@ function HeroQuotes() {
   const quote = QUOTES[index];
   return (
     <figure
-      className="glass relative overflow-hidden rounded-2xl p-6 sm:p-8"
+      className="relative border-l-2 border-primary/60 pl-5 lg:pl-6"
       aria-label="Quotes on investing in rental property"
       data-testid="hero-quotes"
       onMouseEnter={() => setPaused(true)}
@@ -140,33 +138,25 @@ function HeroQuotes() {
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
     >
-      <span aria-hidden className="pointer-events-none absolute -top-6 right-4 select-none font-serif text-[160px] leading-none text-brand opacity-15">
-        &ldquo;
-      </span>
       <p className="caption-4 text-muted-foreground">Words to invest by</p>
-      {/* Fixed height so the card never jumps as quotes of different lengths rotate. */}
-      <div className="mt-4 flex min-h-[168px] flex-col justify-center sm:min-h-[184px]" aria-live="polite">
+      {/* Fixed height so the row never jumps as quotes of different lengths rotate. */}
+      <div className="mt-2 flex min-h-[96px] flex-col justify-center lg:min-h-[112px]" aria-live="polite">
         <blockquote key={index} className="animate-in fade-in slide-in-from-bottom-1 duration-500">
-          <p className="heading-5 text-balance sm:heading-4">&ldquo;{quote.text}&rdquo;</p>
-          {quote.by ? <footer className="body-6 mt-3 text-muted-foreground">{quote.by}</footer> : null}
+          <p className="heading-6 text-balance lg:heading-5">&ldquo;{quote.text}&rdquo;</p>
+          {quote.by ? <footer className="body-6 mt-1.5 text-muted-foreground">{quote.by}</footer> : null}
         </blockquote>
       </div>
-      <div className="mt-6 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-1.5" aria-label="Choose a quote">
-          {QUOTES.map((q, i) => (
-            <button
-              key={q.text}
-              type="button"
-              aria-current={i === index ? "true" : undefined}
-              aria-label={`Quote ${i + 1} of ${QUOTES.length}`}
-              onClick={() => setIndex(i)}
-              className={cn("h-1.5 rounded-full transition-all", i === index ? "w-6 bg-primary" : "w-1.5 bg-muted-foreground/40 hover:bg-muted-foreground/70")}
-            />
-          ))}
-        </div>
-        <button type="button" onClick={focusSearch} className="body-6 inline-flex items-center gap-1 font-medium text-brand hover:underline">
-          Find your deal <ArrowRight className="size-4" aria-hidden />
-        </button>
+      <div className="mt-2 flex items-center gap-1.5" aria-label="Choose a quote">
+        {QUOTES.map((q, i) => (
+          <button
+            key={q.text}
+            type="button"
+            aria-current={i === index ? "true" : undefined}
+            aria-label={`Quote ${i + 1} of ${QUOTES.length}`}
+            onClick={() => setIndex(i)}
+            className={cn("h-1.5 rounded-full transition-all", i === index ? "w-6 bg-primary" : "w-1.5 bg-muted-foreground/40 hover:bg-muted-foreground/70")}
+          />
+        ))}
       </div>
     </figure>
   );
