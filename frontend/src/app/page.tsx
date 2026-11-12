@@ -87,17 +87,73 @@ function Hero({ compact }: { compact: boolean }) {
   return <FullHero demo={status?.data_mode === "demo"} guest={!user} />;
 }
 
+/** Hero messages, rotating above the search box. The first one is the page's real headline. */
+const HERO_MESSAGES: { lead: string; punch: string; body: string }[] = [
+  {
+    lead: "Type a ZIP code.",
+    punch: "See which homes pay you every month.",
+    body: "We run the numbers on every home for sale there as a long term rental and rank them by the cash they leave in your pocket.",
+  },
+  {
+    lead: "Every home for sale.",
+    punch: "Ranked by the cash it puts in your pocket.",
+    body: "Rent, taxes, insurance, repairs and the mortgage, worked out for every listing in the ZIP code.",
+  },
+  {
+    lead: "Stop scrolling listings.",
+    punch: "Start finding rentals that cash flow.",
+    body: "One ZIP code is all it takes. We analyse every home and put the best deals first.",
+  },
+  {
+    lead: "Know the numbers",
+    punch: "before you make an offer.",
+    body: "Cash flow, cap rate and cash on cash for every home, with every figure labelled as sourced or estimated.",
+  },
+  {
+    lead: "Find your next rental",
+    punch: "in seconds, not weekends.",
+    body: "Most ZIP codes are ready in a few seconds, and the first homes show up straight away.",
+  },
+];
+
+/** How long each hero message stays up. */
+const HERO_ROTATE_MS = 2500;
+
 function FullHero({ demo, guest }: { demo: boolean; guest: boolean }) {
   const free = useFreeSearches();
+  const [index, setIndex] = React.useState(0);
+  const [paused, setPaused] = React.useState(false);
+  React.useEffect(() => {
+    if (paused || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => setIndex((i) => (i + 1) % HERO_MESSAGES.length), HERO_ROTATE_MS);
+    return () => window.clearInterval(timer);
+  }, [paused]);
+  const headline = HERO_MESSAGES[0];
   return (
-    <div>
-      <h1 className="heading-4 hero-gradient max-w-[880px] text-balance pb-1 sm:heading-3">
-        Type a ZIP code. <br className="hidden sm:block" />
-        <span className="text-brand">See which homes pay you every month.</span>
+    <div onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+      {/* Screen readers and search engines get one steady headline; the rotation is visual only. */}
+      <h1 className="sr-only">
+        {headline.lead} {headline.punch}
       </h1>
-      <p className="body-3 mt-3 max-w-[620px] text-pretty text-muted-foreground">
-        We run the numbers on every home for sale there as a long term rental and rank them by the cash they leave in your pocket.
-      </p>
+      {/* Every message sits in the same grid cell, so the block is as tall as the longest one and the search box never moves. */}
+      <div className="grid" aria-hidden data-testid="hero-rotator">
+        {HERO_MESSAGES.map((message, i) => (
+          <div
+            key={message.lead}
+            className={cn(
+              "col-start-1 row-start-1 transition-[opacity,transform] ease-out",
+              // The old message fades out first, then the new one fades in, so the two never overlap.
+              i === index ? "translate-y-0 opacity-100 delay-200 duration-500" : "pointer-events-none translate-y-1 opacity-0 duration-200",
+            )}
+          >
+            <p className="heading-4 hero-gradient max-w-[880px] text-balance pb-1 sm:heading-3">
+              {message.lead} <br className="hidden sm:block" />
+              <span className="text-brand">{message.punch}</span>
+            </p>
+            <p className="body-3 mt-3 max-w-[620px] text-pretty text-muted-foreground">{message.body}</p>
+          </div>
+        ))}
+      </div>
       <p className="caption-4 mt-2 text-pretty text-muted-foreground" data-testid="proof-line">
         {demo ? "Demo mode: sample listings for a set of demo ZIP codes" : "Live listings and rents from RentCast · Every home analysed, not a sample"}
         {guest ? ` · ${freeSearchesLabel(free)}, no card needed` : null}
