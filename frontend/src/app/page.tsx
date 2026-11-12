@@ -91,7 +91,7 @@ function FullHero({ demo, guest }: { demo: boolean; guest: boolean }) {
   const free = useFreeSearches();
   return (
     <div>
-      <h1 className="heading-4 hero-gradient text-balance pb-1 lg:heading-3">
+      <h1 className="heading-4 hero-gradient max-w-[880px] text-balance pb-1 sm:heading-3">
         Type a ZIP code. <br className="hidden sm:block" />
         <span className="text-brand">See which homes pay you every month.</span>
       </h1>
@@ -106,7 +106,7 @@ function FullHero({ demo, guest }: { demo: boolean; guest: boolean }) {
   );
 }
 
-/** Investing wisdom beside the headline: one line at a time, rotating gently. */
+/** Investing wisdom under the search box until a search runs: one line at a time, rotating gently. */
 const QUOTES: { text: string; by?: string }[] = [
   { text: "Don't wait to buy real estate. Buy real estate and wait.", by: "Investor proverb" },
   { text: "You make your money when you buy, not when you sell.", by: "Investor proverb" },
@@ -130,7 +130,7 @@ function HeroQuotes() {
   const quote = QUOTES[index];
   return (
     <figure
-      className="relative border-l-2 border-primary/60 pl-5 lg:pl-6"
+      className="mx-auto max-w-[760px] text-center"
       aria-label="Quotes on investing in rental property"
       data-testid="hero-quotes"
       onMouseEnter={() => setPaused(true)}
@@ -139,14 +139,14 @@ function HeroQuotes() {
       onBlur={() => setPaused(false)}
     >
       <p className="caption-4 text-muted-foreground">Words to invest by</p>
-      {/* Fixed height so the row never jumps as quotes of different lengths rotate. */}
-      <div className="mt-2 flex min-h-[96px] flex-col justify-center lg:min-h-[112px]" aria-live="polite">
+      {/* Fixed height so the page never jumps as quotes of different lengths rotate. */}
+      <div className="mt-2 flex min-h-[104px] flex-col items-center justify-center sm:min-h-[88px]" aria-live="polite">
         <blockquote key={index} className="animate-in fade-in slide-in-from-bottom-1 duration-500">
-          <p className="heading-6 text-balance lg:heading-5">&ldquo;{quote.text}&rdquo;</p>
+          <p className="heading-6 text-balance sm:heading-5">&ldquo;{quote.text}&rdquo;</p>
           {quote.by ? <footer className="body-6 mt-1.5 text-muted-foreground">{quote.by}</footer> : null}
         </blockquote>
       </div>
-      <div className="mt-2 flex items-center gap-1.5" aria-label="Choose a quote">
+      <div className="mt-3 flex items-center justify-center gap-1.5" aria-label="Choose a quote">
         {QUOTES.map((q, i) => (
           <button
             key={q.text}
@@ -207,49 +207,52 @@ function QuickStart() {
 
   return (
     <div className="space-y-16 pt-2">
-      {saved.data?.length ? (
+      <div className="space-y-10">
+        <HeroQuotes />
+        {saved.data?.length ? (
+          <section className="space-y-4">
+            <SectionHeading title="Your saved searches" />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {saved.data.slice(0, 6).map((search) => (
+                <Link
+                  key={search.id}
+                  href={searchHref(search.filters as SearchFilters)}
+                  className="tilt-card glass group flex items-center gap-3 rounded-xl px-4 py-3"
+                >
+                  <Bookmark className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="title-4 block truncate">{search.name}</span>
+                    <span className="caption-5 block truncate text-muted-foreground">{describeFilters(search.filters as SearchFilters)}</span>
+                  </span>
+                  <ArrowRight className="size-4 text-muted-foreground transition-transform duration-500 group-hover:translate-x-0.5" aria-hidden />
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <section className="space-y-4">
-          <SectionHeading title="Your saved searches" />
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {saved.data.slice(0, 6).map((search) => (
+          <SectionHeading title="Not sure where to start? Try a market" sub="One click runs a ready made search, ranked and ready to compare." />
+          <div className="grid gap-3 sm:grid-cols-3">
+            {starters.map((starter) => (
               <Link
-                key={search.id}
-                href={searchHref(search.filters as SearchFilters)}
+                key={starter.label}
+                href={searchHref(starter.filters, { sort: starter.sort, base: "/" })}
                 className="tilt-card glass group flex items-center gap-3 rounded-xl px-4 py-3"
               >
-                <Bookmark className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="btn-brand flex size-10 shrink-0 items-center justify-center rounded-full">
+                  <MapPin className="size-5" aria-hidden />
+                </span>
                 <span className="min-w-0 flex-1">
-                  <span className="title-4 block truncate">{search.name}</span>
-                  <span className="caption-5 block truncate text-muted-foreground">{describeFilters(search.filters as SearchFilters)}</span>
+                  <span className="title-4 block truncate">{starter.label}</span>
+                  <span className="caption-5 block truncate text-muted-foreground">{starter.sub}</span>
                 </span>
                 <ArrowRight className="size-4 text-muted-foreground transition-transform duration-500 group-hover:translate-x-0.5" aria-hidden />
               </Link>
             ))}
           </div>
         </section>
-      ) : null}
-
-      <section className="space-y-4">
-        <SectionHeading title="Not sure where to start? Try a market" sub="One click runs a ready made search, ranked and ready to compare." />
-        <div className="grid gap-3 sm:grid-cols-3">
-          {starters.map((starter) => (
-            <Link
-              key={starter.label}
-              href={searchHref(starter.filters, { sort: starter.sort, base: "/" })}
-              className="tilt-card glass group flex items-center gap-3 rounded-xl px-4 py-3"
-            >
-              <span className="btn-brand flex size-10 shrink-0 items-center justify-center rounded-full">
-                <MapPin className="size-5" aria-hidden />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="title-4 block truncate">{starter.label}</span>
-                <span className="caption-5 block truncate text-muted-foreground">{starter.sub}</span>
-              </span>
-              <ArrowRight className="size-4 text-muted-foreground transition-transform duration-500 group-hover:translate-x-0.5" aria-hidden />
-            </Link>
-          ))}
-        </div>
-      </section>
+      </div>
 
       <Reveal className="space-y-4" aria-labelledby="benefits-title">
         <h2 id="benefits-title" className="sr-only">
@@ -323,7 +326,7 @@ function QuickStart() {
 export default function DashboardPage() {
   return (
     <React.Suspense fallback={<div className="p-6"><Skeleton className="h-40 w-full" /></div>}>
-      <SearchExperience basePath="/" heading={(active) => <Hero compact={active} />} idle={<QuickStart />} heroAside={<HeroQuotes />} />
+      <SearchExperience basePath="/" heading={(active) => <Hero compact={active} />} idle={<QuickStart />} />
     </React.Suspense>
   );
 }

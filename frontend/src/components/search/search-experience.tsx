@@ -379,10 +379,9 @@ interface Props {
   /** Rendered above results when no search has been run yet. */
   idle?: React.ReactNode;
   /** Shown beside the heading and search box (large screens) before any search is run. */
-  heroAside?: React.ReactNode;
 }
 
-export function SearchExperience({ basePath, defaultView = "list", heading, idle, heroAside }: Props) {
+export function SearchExperience({ basePath, defaultView = "list", heading, idle }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -602,20 +601,8 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-6 px-4 pb-24 pt-2 lg:px-6">
-      {!filters && heroAside ? (
-        // Desktop: headline and aside share one compact row, the search panel gets the full width below.
-        // Phones: headline, then search, then the aside, so the search box stays near the top.
-        <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:gap-x-8">
-          <div className="min-w-0 lg:col-start-1 lg:row-start-1">{headingNode}</div>
-          <div className="min-w-0 lg:col-span-2 lg:row-start-2">{panel}</div>
-          <div className="min-w-0 lg:col-start-2 lg:row-start-1">{heroAside}</div>
-        </div>
-      ) : (
-        <>
-          {headingNode}
-          {panel}
-        </>
-      )}
+      {headingNode}
+      {panel}
 
       {!filters ? idle : null}
       {needsAccount ? <SignUpGate /> : null}
