@@ -19,6 +19,7 @@ import type {
   PropertyDetail,
   ProviderUsage,
   CacheSettings,
+  PropertyReport,
   CacheSettingsOut,
   Regulation,
   RentEstimate,
@@ -155,6 +156,7 @@ export const api = {
   rentEstimate: (id: string, fetch = false) => request<RentEstimate>(`/properties/${id}/rent-estimate${qs({ fetch })}`),
   valueEstimate: (id: string, fetch = false) => request<ValueEstimate>(`/properties/${id}/value-estimate${qs({ fetch })}`),
   strEstimate: (id: string, fetch = false) => request<StrEstimate>(`/properties/${id}/str-estimate${qs({ fetch })}`),
+  propertyReport: (id: string) => request<PropertyReport>(`/properties/${id}/report`, { method: "POST" }),
   taxRecord: (id: string) => request<{ available: boolean; reason?: string; annual_amount?: number; year?: number; source?: string }>(`/properties/${id}/tax-record`, { method: "POST" }),
 
   // --- analysis

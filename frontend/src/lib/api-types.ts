@@ -354,6 +354,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/properties/{property_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Property Report
+         * @description Fetch everything property-specific in one go and count it as **one** property report.
+         *
+         *     The exact rent estimate (with comparable rentals), the value estimate (with comparable sales) and the
+         *     public property-tax record come from three RentCast endpoints, so up to three provider requests are
+         *     made, side by side. Anything already saved (rent and value for 30 days, a known tax amount) is reused
+         *     and not bought again. If every lookup fails, the report is given back.
+         */
+        post: operations["property_report_api_v1_properties__property_id__report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/properties/{property_id}/tax-record": {
         parameters: {
             query?: never;
@@ -2873,6 +2898,33 @@ export interface components {
              */
             is_favorite: boolean;
         };
+        /**
+         * PropertyReportOut
+         * @description Result of a full property report: exact rent, value and property tax for one address.
+         */
+        PropertyReportOut: {
+            /** Complete */
+            complete: boolean;
+            /**
+             * Fetched
+             * @default []
+             */
+            fetched: string[];
+            /**
+             * Already Had
+             * @default []
+             */
+            already_had: string[];
+            /**
+             * Unavailable
+             * @default {}
+             */
+            unavailable: {
+                [key: string]: string;
+            };
+            /** Reason */
+            reason?: string | null;
+        };
         /** ProviderStatus */
         ProviderStatus: {
             /** Key */
@@ -4882,6 +4934,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StrEstimateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    property_report_api_v1_properties__property_id__report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                property_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropertyReportOut"];
                 };
             };
             /** @description Validation Error */

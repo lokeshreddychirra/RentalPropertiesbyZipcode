@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Bookmark, BookmarkCheck, ExternalLink, GitCompareArrows, Save, SlidersHorizontal } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { MapView } from "@/components/map/map-view";
@@ -30,7 +30,7 @@ import { Dialog, DialogContent, DialogTrigger, Hint, Tabs, TabsContent, TabsList
 import { api, ApiError, errorMessage, type AnalysisBody } from "@/lib/api";
 import { applyOverrides, quickLtr } from "@/lib/ltr-model";
 import { useAccount, useApp, useFavoriteIds, useSession, useStatus } from "@/lib/store";
-import type { AssumptionOverrides, AssumptionSection, PropertyDetail, RentEstimate, Strategy } from "@/lib/types";
+import type { AssumptionOverrides, AssumptionSection, PropertyDetail, PropertyReport, RentEstimate, Strategy } from "@/lib/types";
 import { cn, num, pct, relativeTime, shortDate, titleCase, usd, zillowUrl } from "@/lib/utils";
 
 const INCLUDE: AnalysisBody["include"] = ["forecast", "scenarios", "sensitivity", "financing"];
@@ -81,10 +81,6 @@ function Gallery({ detail }: { detail: PropertyDetail }) {
   );
 }
 
-/**
- * Offers the exact rent estimate for this address. It replaces the ZIP's area rent in every figure and uses
- * one of the user's property reports; a property already unlocked (by anyone) in the last 30 days is free.
- */
 /** Where the rent used in the analysis comes from, in plain words. */
 function rentSource(userSet: boolean, estimate: RentEstimate | undefined, zip: string | null | undefined): string {
   if (userSet) return "Your number, set in the deal simulator";
@@ -96,50 +92,51 @@ function rentSource(userSet: boolean, estimate: RentEstimate | undefined, zip: s
   return `Area estimate for ZIP ${zip ?? ""}${estimate.market_sample ? `, from ${estimate.market_sample} rental listings for similar homes` : ""}`;
 }
 
-function ExactRentPrompt({
-  estimate,
-  zip,
-  requested,
+const REPORT_ITEM_LABEL: Record<string, string> = { rent: "exact rent", value: "value estimate", tax: "property tax" };
+
+function listItems(items: string[]): string {
+  const labels = items.map((item) => REPORT_ITEM_LABEL[item] ?? item);
+  return labels.length <= 1 ? (labels[0] ?? "") : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+}
+
+/**
+ * One action for everything specific to this address: the exact rent (with comparable rentals), the value
+ * (with comparable sales) and the property tax, fetched together as one property report. Anything already
+ * saved is reused, and a report that delivers nothing is given back.
+ */
+function ReportPrompt({
   busy,
   onRequest,
+  result,
   inline = false,
   compact = false,
+  title,
+  body,
 }: {
-  estimate: RentEstimate | undefined;
-  zip: string | null | undefined;
-  requested: boolean;
   busy: boolean;
   onRequest: () => void;
+  result?: PropertyReport;
   inline?: boolean;
   /** Only the action (button and allowance), for the rent row on the headline card. */
   compact?: boolean;
+  title?: string;
+  body?: string;
 }) {
   const { user } = useSession();
   const account = useAccount();
-  if (!estimate || estimate.level === "property" || estimate.is_demo) return null;
-  const area = estimate.available && estimate.level === "market_zip";
-  // The request was made but did not produce an exact estimate (plan limit, no estimate for this address).
-  const failed = requested && !busy && !!estimate.reason && !estimate.can_request;
-  if (!estimate.can_request && !failed) return null;
-
   const info = account.data;
   const left = info && info.property_reports_limit != null ? Math.max(info.property_reports_limit - info.property_reports_used, 0) : null;
   const allowance = !user
     ? "Free with an account"
     : info?.unlimited || (info && info.property_reports_limit == null)
-      ? "Included with your account"
+      ? "Exact rent, value and tax · included with your account"
       : left != null
-        ? `Uses 1 of your property reports · ${left} left${info?.monthly ? " this month" : ""}`
-        : "Uses 1 property report";
+        ? `Exact rent, value and tax · uses 1 report · ${left} left${info?.monthly ? " this month" : ""}`
+        : "Exact rent, value and tax · uses 1 property report";
   const outOfReports = !!user && left === 0;
+  const problem = result?.reason ?? (result && Object.keys(result.unavailable).length ? Object.values(result.unavailable).join(" ") : null);
 
-  const action = failed ? (
-    outOfReports ? (
-      <Button asChild size="sm" variant="outline">
-        <Link href="/pricing">See plans</Link>
-      </Button>
-    ) : null
-  ) : !user ? (
+  const action = !user ? (
     <Button asChild size="sm">
       <Link href={`/login?mode=register&next=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/")}`}>Create a free account</Link>
     </Button>
@@ -152,8 +149,8 @@ function ExactRentPrompt({
     </div>
   ) : (
     <div className="flex flex-col items-start gap-1 sm:items-end">
-      <Button size="sm" onClick={onRequest} disabled={busy} data-testid="get-exact-rent">
-        {busy ? "Getting the exact rent…" : "Get the exact rent for this address"}
+      <Button size="sm" onClick={onRequest} disabled={busy} data-testid="get-report">
+        {busy ? "Getting the property report…" : "Get the full property report"}
       </Button>
       <span className="caption-5 text-muted-foreground">{allowance}</span>
     </div>
@@ -161,25 +158,19 @@ function ExactRentPrompt({
 
   if (compact) {
     return (
-      <div className="flex flex-col items-start gap-1 sm:items-end" data-testid="exact-rent">
+      <div className="flex flex-col items-start gap-1 sm:items-end" data-testid="report-prompt">
         {action}
-        {failed ? <span className="caption-5 max-w-xs text-pretty text-muted-foreground sm:text-right">{estimate.reason}</span> : null}
+        {problem ? <span className="caption-5 max-w-xs text-pretty text-muted-foreground sm:text-right">{problem}</span> : null}
       </div>
     );
   }
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl px-4 py-3", inline ? "bg-muted/50" : "glass")} data-testid="exact-rent">
+    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl px-4 py-3", inline ? "bg-muted/50" : "glass")} data-testid="report-prompt">
       <div className="min-w-0 flex-1">
-        <p className="title-4">
-          {area ? `Using the area rent: ${usd(estimate.rent)}/mo` : "No rent estimate for this home yet"}
-        </p>
+        <p className="title-4">{title ?? "Get the full property report"}</p>
         <p className="caption-5 mt-0.5 text-pretty text-muted-foreground">
-          {failed
-            ? estimate.reason
-            : area
-              ? `Worked out from ${estimate.market_sample ?? "the"} rental listings for similar homes in ZIP ${zip ?? ""}. Get the exact rent for this address, with the comparable rentals behind it, to firm up every number.`
-              : "Get the rent estimate for this address, with the comparable rentals behind it."}
+          {problem ?? body ?? "The exact rent, value and property tax for this address, with the comparable rentals and sales behind them, in one step."}
         </p>
       </div>
       {action}
@@ -187,35 +178,7 @@ function ExactRentPrompt({
   );
 }
 
-function TaxLookup({ id }: { id: string }) {
-  const client = useQueryClient();
-  const [busy, setBusy] = React.useState(false);
-  return (
-    <button
-      type="button"
-      disabled={busy}
-      className="ml-1 text-xs font-normal underline underline-offset-2 hover:text-foreground disabled:opacity-60"
-      onClick={async () => {
-        setBusy(true);
-        try {
-          const result = await api.taxRecord(id);
-          if (result.available) {
-            toast.success(`Tax record found: ${usd(result.annual_amount)} for ${result.year}`);
-            await Promise.all([client.invalidateQueries({ queryKey: ["property", id] }), client.invalidateQueries({ queryKey: ["analysis"] })]);
-          } else toast.info(result.reason ?? "No public tax record was found.");
-        } catch (error) {
-          toast.error(errorMessage(error));
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      {busy ? "Looking up…" : "Look up public record (1 provider request)"}
-    </button>
-  );
-}
-
-function ListingFacts({ detail, canLookupTax }: { detail: PropertyDetail; canLookupTax: boolean }) {
+function ListingFacts({ detail, onGetReport, busy }: { detail: PropertyDetail; onGetReport?: () => void; busy?: boolean }) {
   const ctx = detail.context;
   const facts: [string, React.ReactNode][] = [
     ["Property type", titleCase(ctx.property_type)],
@@ -234,8 +197,12 @@ function ListingFacts({ detail, canLookupTax }: { detail: PropertyDetail; canLoo
         `${usd(ctx.property_tax_annual)}/yr · ${ctx.property_tax_source ?? ""}`
       ) : (
         <span key="tax">
-          Not reported — estimated
-          {canLookupTax ? <TaxLookup id={ctx.id} /> : null}
+          Not reported, estimated
+          {onGetReport ? (
+            <button type="button" disabled={busy} onClick={onGetReport} className="ml-1 text-xs font-normal underline underline-offset-2 hover:text-foreground disabled:opacity-60">
+              {busy ? "Getting the property report…" : "Get the actual tax in the full property report"}
+            </button>
+          ) : null}
         </span>
       ),
     ],
@@ -277,12 +244,32 @@ export default function PropertyPage() {
   // The search already priced this home with the ZIP's area rent. The exact estimate for the address is a
   // paid request that uses one of the user's property reports, so it is only fetched when they ask for it
   // (automatically in demo mode, where it costs nothing). A saved exact estimate is always shown.
-  const [wantRent, setWantRent] = React.useState(false);
-  const fetchRent = wantRent || !!isDemoMode;
-  const rent = useQuery({ queryKey: ["rent-estimate", id, fetchRent], queryFn: () => api.rentEstimate(id, fetchRent), enabled: !!ctx && !!status, staleTime: 5 * 60_000, retry: false, placeholderData: keepPreviousData });
+  const rent = useQuery({ queryKey: ["rent-estimate", id, !!isDemoMode], queryFn: () => api.rentEstimate(id, !!isDemoMode), enabled: !!ctx && !!status, staleTime: 5 * 60_000, retry: false, placeholderData: keepPreviousData });
   // Value estimates are premium calls: automatic in demo mode, on request with live providers.
-  const [wantValue, setWantValue] = React.useState(false);
-  const value = useQuery({ queryKey: ["value-estimate", id, wantValue || isDemoMode], queryFn: () => api.valueEstimate(id, wantValue || !!isDemoMode), enabled: !!ctx && !!status, staleTime: 5 * 60_000, retry: false });
+  const value = useQuery({ queryKey: ["value-estimate", id, !!isDemoMode], queryFn: () => api.valueEstimate(id, !!isDemoMode), enabled: !!ctx && !!status, staleTime: 5 * 60_000, retry: false, placeholderData: keepPreviousData });
+
+  // The full property report: exact rent, value and property tax in one step, one report.
+  const report = useMutation({
+    mutationFn: () => api.propertyReport(id),
+    onSuccess: async (result) => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["rent-estimate", id] }),
+        client.invalidateQueries({ queryKey: ["value-estimate", id] }),
+        client.invalidateQueries({ queryKey: ["property", id] }),
+        client.invalidateQueries({ queryKey: ["analysis"] }),
+        client.invalidateQueries({ queryKey: ["account"] }),
+      ]);
+      if (result.fetched.length) {
+        const missing = Object.keys(result.unavailable);
+        toast.success(`Property report ready: ${listItems([...result.fetched, ...result.already_had])}`, missing.length ? { description: Object.values(result.unavailable).join(" ") } : undefined);
+      } else if (result.reason && !result.already_had.length) toast.error(result.reason);
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const reportResult = report.data;
+  const getReport = () => report.mutate();
+  const liveData = status?.data_mode === "live" && !ctx?.is_demo;
+  const reportNeeded = liveData && (rent.data?.level !== "property" || (value.data ? !value.data.available : false) || ctx?.property_tax_annual == null);
 
   // New estimates change the analysis inputs: refresh dependent data once they arrive.
   const estimateStamp = `${rent.data?.fetched_at ?? ""}|${value.data?.fetched_at ?? ""}`;
@@ -498,10 +485,7 @@ export default function PropertyPage() {
               rent={{
                 amount: (overrides.long_term?.monthly_rent as number | undefined) ?? analysis.assumptions.long_term.monthly_rent,
                 source: rentSource(overrides.long_term?.monthly_rent != null, rent.data, ctx.zip_code),
-                action:
-                  overrides.long_term?.monthly_rent == null ? (
-                    <ExactRentPrompt estimate={rent.data} zip={ctx.zip_code} requested={wantRent} busy={wantRent && rent.isFetching} onRequest={() => setWantRent(true)} compact />
-                  ) : null,
+                action: reportNeeded && overrides.long_term?.monthly_rent == null ? <ReportPrompt busy={report.isPending} onRequest={getReport} result={reportResult} compact /> : null,
               }}
             />
           ) : (
@@ -544,7 +528,7 @@ export default function PropertyPage() {
                   <CardDescription>{data.attribution.join(" · ") || "Listing data"}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <ListingFacts detail={data} canLookupTax={!isDemoMode && !ctx.is_demo} />
+                  <ListingFacts detail={data} onGetReport={liveData ? getReport : undefined} busy={report.isPending} />
                   {data.description ? <p className="border-t pt-4 text-sm leading-relaxed text-muted-foreground">{data.description}</p> : <p className="border-t pt-4 text-xs text-muted-foreground">No listing description is supplied by the data provider.</p>}
                 </CardContent>
               </Card>
@@ -640,7 +624,20 @@ export default function PropertyPage() {
                       ) : null}
                       {rent.data.level === "market_zip" ? (
                         <div className="px-5 pb-5">
-                          <ExactRentPrompt estimate={rent.data} zip={ctx.zip_code} requested={wantRent} busy={wantRent && rent.isFetching} onRequest={() => setWantRent(true)} inline />
+                          {liveData ? (
+                            <ReportPrompt
+                              busy={report.isPending}
+                              onRequest={getReport}
+                              result={reportResult}
+                              inline
+                              title={`Using the area rent for ZIP ${ctx.zip_code ?? ""}`}
+                              body={`Worked out from ${rent.data.market_sample ?? "the"} rental listings for similar homes. The full property report adds the exact rent for this address with the comparable rentals behind it, plus the value and property tax.`}
+                            />
+                          ) : (
+                            <Alert tone="info">
+                              {rent.data.reason} Based on {rent.data.market_sample} rental listings in ZIP {ctx.zip_code}.
+                            </Alert>
+                          )}
                         </div>
                       ) : (
                         <ComparablesTable comparables={rent.data.comparables} priceLabel="Rent" perMonth />
@@ -648,8 +645,8 @@ export default function PropertyPage() {
                     </>
                   ) : (
                     <div className="px-5 pb-5">
-                      {rent.data?.can_request ? (
-                        <ExactRentPrompt estimate={rent.data} zip={ctx.zip_code} requested={wantRent} busy={wantRent && rent.isFetching} onRequest={() => setWantRent(true)} inline />
+                      {liveData ? (
+                        <ReportPrompt busy={report.isPending} onRequest={getReport} result={reportResult} inline title="No rent estimate for this home yet" />
                       ) : (
                         <Alert tone="warning" title="Rent estimate unavailable">
                           {rent.data?.reason ?? "No reliable estimate could be retrieved."} Enter a monthly rent in the deal simulator to model this property.
@@ -687,17 +684,20 @@ export default function PropertyPage() {
                     </>
                   ) : (
                     <div className="px-5 pb-5">
-                      <Alert tone="info" title="No value estimate yet">
-                        {value.data?.reason}
-                        {value.data?.can_request ? (
-                          <>
-                            {" "}
-                            <button type="button" className="font-medium underline" onClick={() => setWantValue(true)}>
-                              Request value estimate and comparables (uses one provider credit)
-                            </button>
-                          </>
-                        ) : null}
-                      </Alert>
+                      {liveData ? (
+                        <ReportPrompt
+                          busy={report.isPending}
+                          onRequest={getReport}
+                          result={reportResult}
+                          inline
+                          title="No value estimate yet"
+                          body="The full property report adds what this home is likely worth, with the comparable homes for sale behind it, plus the exact rent and property tax."
+                        />
+                      ) : (
+                        <Alert tone="info" title="No value estimate yet">
+                          {value.data?.reason}
+                        </Alert>
+                      )}
                     </div>
                   )}
                 </CardContent>

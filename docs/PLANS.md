@@ -12,11 +12,13 @@ money with RentCast:
 
 * **ZIP code search** — each *different* ZIP searched in the period. Re-running a ZIP already
   searched, changing filters or sorting never counts.
-* **Property report** — the exact rent estimate, value estimate or tax record for one address,
-  bought from RentCast when the user asks for it on the property page ("Get the exact rent for this
-  address"). Opening a property is free: it shows the full analysis with the ZIP's area rent from the
-  search. One property counts once however many of the three are fetched; properties already
-  unlocked, or fetched by anyone in the last 30 days, are free.
+* **Property report** — everything specific to one address, fetched together in one tap ("Get the
+  full property report" on the property page): the exact rent estimate with comparable rentals, the
+  value estimate with comparable sales, and the public property-tax record. These come from three
+  RentCast endpoints, so a report makes up to three requests side by side. Anything already saved
+  (rent and value for 30 days, a known tax amount) is reused and not bought again. Opening a property
+  is free: it shows the full analysis with the ZIP's area rent from the search. If every lookup fails,
+  the report is given back.
 * Every search covers exactly **one ZIP code**, on every plan (administrators included).
 * Free allowances are for the lifetime of the account; paid allowances reset on the 1st of each
   month (UTC). Administrators are unlimited. Quotas apply in live data mode only.
@@ -40,7 +42,7 @@ per request (check current prices at <https://www.rentcast.io/api>).
 | Same ZIP again later | 1 (homes for sale only; area rents are kept 30 days) |
 | Every 500 homes for sale beyond the first 500 | +1 |
 | Opening a property | 0 (the analysis uses the ZIP's area rent from the search) |
-| Property report, on request | 1 (exact rent estimate) + 1 for a value estimate + 1 for a tax record: 1.5 on average, 3 at most |
+| Full property report, on request | Up to 3 (exact rent, value and tax record, fetched together); fewer when some are already saved |
 
 All of these are shared: every user searching the same ZIP or opening the same property reuses the
 same cached data.
@@ -50,13 +52,13 @@ sharing with other users), with Stripe's 2.9% + $0.30 per payment:
 
 | Plan | Requests | RentCast cost at $0.06 | Price after Stripe fees | Left over |
 |---|---|---|---|---|
-| Free (once, not monthly) | 1×2 + 3×1.5 = 6.5 | $0.39 | $0 | −$0.39 per signup |
-| Pro $19 | 5×6 + 20×1.5 = 60 | $3.60 | $18.15 | $14.55 |
-| Premium $49 | 15×6 + 60×1.5 = 180 | $10.80 | $47.28 | $36.48 |
+| Free (once, not monthly) | 1×2 + 3×3 = 11 | $0.66 | $0 | −$0.66 per signup |
+| Pro $19 | 5×6 + 20×3 = 90 | $5.40 | $18.15 | $12.75 |
+| Premium $49 | 15×6 + 60×3 = 270 | $16.20 | $47.28 | $31.08 |
 
 **Break-even.** Fixed costs are the RentCast plan ($74) plus hosting. Five Pro subscribers
 (5 × $18.15 = $90.75) cover the RentCast plan; six cover it with about $30 of paid hosting. The 1,000
-included requests are enough for about 16 Pro subscribers who use their whole allowance.
+included requests are enough for about 11 Pro subscribers who use their whole allowance.
 
 **When to move up a RentCast tier.** Growth ($199 for 5,000, then $0.03) is cheaper than Foundation
 above about 3,100 requests a month; Scale ($449 for 25,000) is cheaper than Growth above about 13,300.

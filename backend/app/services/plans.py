@@ -18,7 +18,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -164,23 +164,36 @@ async def authorize_search(session: AsyncSession, user: User, filters: SearchFil
         await record(session, user, ZIP_SEARCH, new, period)
 
 
-async def authorize_property_report(session: AsyncSession, user: User | None, property_id: str) -> None:
-    """Called before buying property-level data. Raises when the user may not; records it otherwise."""
+async def authorize_property_report(session: AsyncSession, user: User | None, property_id: str) -> bool:
+    """Called before buying property-level data. Raises when the user may not; records it otherwise.
+
+    Returns True when this call used up a new report (so it can be given back if nothing was delivered).
+    """
     if not quotas_apply():
-        return
+        return False
     if user is None:
         raise PlanLimitError("Create a free account to get property-level estimates.", details={"plan": None, "kind": "property reports", "used": 0, "limit": 0})
     if is_unlimited(user):
-        return
+        return False
     await refresh(session)
     plan = plan_for(user)
     period = current_period(plan)
     used = await used_items(session, user, PROPERTY_REPORT, period)
     if property_id in used:
-        return
+        return False
     if plan.property_reports is not None and len(used) >= plan.property_reports:
         raise _limit_error(plan, "property reports", len(used), plan.property_reports)
     await record(session, user, PROPERTY_REPORT, [property_id], period)
+    return True
+
+
+async def release_property_report(session: AsyncSession, user: User, property_id: str) -> None:
+    """Give back a report that delivered nothing (every provider lookup failed)."""
+    period = current_period(plan_for(user))
+    await session.execute(
+        delete(UserUsage).where(UserUsage.user_id == user.id, UserUsage.kind == PROPERTY_REPORT, UserUsage.item == property_id[:64], UserUsage.period == period)
+    )
+    await session.commit()
 
 
 async def account_summary(session: AsyncSession, user: User) -> dict:

@@ -220,3 +220,56 @@ async def test_admin_configures_plan_allowances(app, client, live_quotas):
         for key, plan in original.items():
             await client.put(f"{API}/admin/plans/{key}", json={k: plan[k] for k in ("price_usd", "zip_searches", "property_reports")})
         await user.aclose()
+
+
+async def test_full_property_report_fetches_everything_missing_for_one_report(app, client, live_quotas, monkeypatch):
+    """One tap buys the exact rent and value together, counts one report, and is free to repeat."""
+    from sqlalchemy import delete
+
+    from app.core.db import session_scope
+    from app.models.tables import RentEstimate, ValueEstimate
+    from app.providers.base import ProviderError
+
+    job = (await client.post(f"{API}/searches/run", json={"filters": {"zip_codes": ["44105"]}})).json()
+    for _ in range(200):
+        if job["status"] in ("completed", "failed"):
+            break
+        await asyncio.sleep(0.05)
+        job = (await client.get(f"{API}/searches/jobs/{job['id']}")).json()
+    ids = [item["id"] for item in (await client.get(f"{API}/searches/jobs/{job['id']}/results", params={"page_size": 5})).json()["items"]]
+    async with session_scope() as session:  # demo searches pre-compute estimates: clear them
+        await session.execute(delete(RentEstimate).where(RentEstimate.property_id.in_([uuid.UUID(i) for i in ids[:2]]), RentEstimate.level == "property"))
+        await session.execute(delete(ValueEstimate).where(ValueEstimate.property_id.in_([uuid.UUID(i) for i in ids[:2]])))
+
+    user, _ = await _new_user(app)
+    anon = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    try:
+        guest = (await anon.post(f"{API}/properties/{ids[0]}/report")).json()
+        assert not guest["fetched"] and "free account" in guest["reason"]
+
+        first = (await user.post(f"{API}/properties/{ids[0]}/report")).json()
+        assert sorted(first["fetched"]) == ["rent", "value"] and first["complete"]  # demo data has no tax lookup
+        assert (await user.get(f"{API}/properties/{ids[0]}/rent-estimate")).json()["level"] == "property"
+        assert (await user.get(f"{API}/properties/{ids[0]}/value-estimate")).json()["available"]
+        assert (await user.get(f"{API}/account")).json()["property_reports_used"] == 1
+
+        again = (await user.post(f"{API}/properties/{ids[0]}/report")).json()
+        assert again["complete"] and not again["fetched"] and {"rent", "value"} <= set(again["already_had"])
+        assert (await user.get(f"{API}/account")).json()["property_reports_used"] == 1
+
+        # When every lookup fails, the report is given back.
+        from app.providers import registry
+
+        demo = registry.get_providers()
+
+        async def broken(_subject):
+            raise ProviderError("demo", "temporarily unavailable", status_code=503)
+
+        monkeypatch.setattr(demo.rent, "rent_estimate", broken)
+        monkeypatch.setattr(demo.value, "value_estimate", broken)
+        failed = (await user.post(f"{API}/properties/{ids[1]}/report")).json()
+        assert not failed["fetched"] and set(failed["unavailable"]) == {"rent", "value"} and "no property report was used" in failed["reason"]
+        assert (await user.get(f"{API}/account")).json()["property_reports_used"] == 1
+    finally:
+        await user.aclose()
+        await anon.aclose()

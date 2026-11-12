@@ -36,6 +36,7 @@ export type ScenarioResult = S["ScenarioResult"];
 export type SensitivityResult = S["SensitivityResult"];
 export type FinancingScenarioResult = S["FinancingScenarioResult"];
 export type RentEstimate = S["RentEstimateOut"];
+export type PropertyReport = S["PropertyReportOut"];
 export type ValueEstimate = S["ValueEstimateOut"];
 export type StrEstimate = S["StrEstimateOut"];
 export type Comparable = S["ComparableOut"];

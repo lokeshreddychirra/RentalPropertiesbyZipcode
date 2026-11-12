@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -332,6 +334,106 @@ async def str_estimate(property_id: uuid.UUID, session: Session, fetch: bool = F
         level=row.level, adr=row.adr, occupancy_pct=row.occupancy_pct, occupancy_basis=row.occupancy_basis, annual_revenue=row.annual_revenue,
         cleaning_fee=row.cleaning_fee, adr_includes_cleaning_fee=row.adr_includes_cleaning_fee, avg_stay_nights=row.avg_stay_nights,
         seasonality=[Decimal(str(w)) for w in row.seasonality] if row.seasonality else None, comp_count=row.comp_count,
+    )
+
+
+class PropertyReportOut(BaseModel):
+    """Result of a full property report: exact rent, value and property tax for one address."""
+
+    complete: bool  # nothing is missing any more
+    fetched: list[str] = []  # bought just now: rent, value, tax
+    already_had: list[str] = []  # saved earlier, reused for free
+    unavailable: dict[str, str] = {}  # item -> why it could not be fetched
+    reason: str | None = None  # why nothing was fetched (for example the plan limit)
+
+
+REPORT_ITEMS = ("rent", "value", "tax")
+
+
+@router.post("/{property_id}/report", response_model=PropertyReportOut, dependencies=[rate_limit("property_report", 30, 60)])
+async def property_report(property_id: uuid.UUID, session: Session, user: OptionalUser) -> PropertyReportOut:
+    """Fetch everything property-specific in one go and count it as **one** property report.
+
+    The exact rent estimate (with comparable rentals), the value estimate (with comparable sales) and the
+    public property-tax record come from three RentCast endpoints, so up to three provider requests are
+    made, side by side. Anything already saved (rent and value for 30 days, a known tax amount) is reused
+    and not bought again. If every lookup fails, the report is given back.
+    """
+    ctx = await _require_context(session, property_id)
+    providers = get_providers()
+    settings = get_settings()
+    now = datetime.now(UTC)
+    have = {
+        "rent": (
+            await session.execute(
+                select(RentEstimate.id).where(
+                    RentEstimate.property_id == property_id, RentEstimate.level == "property", RentEstimate.fetched_at >= now - timedelta(days=settings.rent_estimate_ttl_days)
+                ).limit(1)
+            )
+        ).first()
+        is not None,
+        "value": (
+            await session.execute(
+                select(ValueEstimate.id).where(ValueEstimate.property_id == property_id, ValueEstimate.fetched_at >= now - timedelta(days=settings.value_estimate_ttl_days)).limit(1)
+            )
+        ).first()
+        is not None,
+        "tax": ctx.property_tax_annual is not None,
+    }
+    source = {"rent": providers.rent, "value": providers.value, "tax": providers.tax}
+    already = [item for item in REPORT_ITEMS if have[item]]
+    wanted = [item for item in REPORT_ITEMS if not have[item] and source[item] is not None]
+    if not wanted:
+        return PropertyReportOut(complete=True, already_had=already)
+
+    try:
+        newly_used = await plans.authorize_property_report(session, user, str(property_id))
+    except PlanLimitError as exc:
+        return PropertyReportOut(complete=False, already_had=already, reason=exc.message)
+
+    subject = property_store.subject_for(ctx)
+    no_data = {
+        "rent": "RentCast has no reliable rent estimate for this address.",
+        "value": "RentCast has no value estimate for this address.",
+        "tax": "No public tax record was found for this address.",
+    }
+
+    async def lookup(item: str):
+        provider = source[item]
+        if item == "rent":
+            return await provider.rent_estimate(subject)  # type: ignore[union-attr]
+        if item == "value":
+            return await provider.value_estimate(subject)  # type: ignore[union-attr]
+        return await provider.tax_record(subject)  # type: ignore[union-attr]
+
+    results = await asyncio.gather(*(lookup(item) for item in wanted), return_exceptions=True)
+    fetched: list[str] = []
+    unavailable: dict[str, str] = {}
+    for item, result in zip(wanted, results, strict=True):
+        if isinstance(result, ProviderError):
+            unavailable[item] = _provider_failure(result)
+        elif isinstance(result, BaseException):
+            raise result
+        elif result is None:
+            unavailable[item] = no_data[item]
+        else:
+            async with session_scope() as write:
+                if item == "rent":
+                    await property_store.save_rent_estimate(write, property_id, result)
+                elif item == "value":
+                    await property_store.save_value_estimate(write, property_id, result)
+                else:
+                    await property_store.save_tax_record(write, property_id, result)
+            fetched.append(item)
+
+    if not fetched and newly_used and user is not None:
+        await plans.release_property_report(session, user, str(property_id))
+    return PropertyReportOut(
+        complete=not unavailable and len(fetched) + len(already) == len([i for i in REPORT_ITEMS if have[i] or source[i] is not None]),
+        fetched=fetched,
+        already_had=already,
+        unavailable=unavailable,
+        reason=None if fetched else "Nothing new could be fetched for this address, so no property report was used.",
     )
 
 
