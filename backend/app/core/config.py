@@ -92,11 +92,11 @@ class Settings(BaseSettings):
     plan_free_zip_searches: int = 1  # lifetime
     plan_free_property_reports: int = 3  # lifetime
     plan_pro_price_usd: Decimal = Decimal("19")
-    plan_pro_zip_searches: int = 15  # per month
-    plan_pro_property_reports: int = 75
+    plan_pro_zip_searches: int = 5  # per month
+    plan_pro_property_reports: int = 20
     plan_premium_price_usd: Decimal = Decimal("49")
-    plan_premium_zip_searches: int = 50
-    plan_premium_property_reports: int = 250
+    plan_premium_zip_searches: int = 15
+    plan_premium_property_reports: int = 60
     # Online payments (Stripe Checkout + Billing Portal). Without these, an administrator assigns plans.
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None

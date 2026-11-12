@@ -7,8 +7,8 @@ money with RentCast:
 | | Free | Pro | Premium |
 |---|---|---|---|
 | Price | $0 | $19 / month | $49 / month |
-| ZIP code searches | 1 (lifetime) | 15 / month | 50 / month |
-| Property reports | 3 (lifetime) | 75 / month | 250 / month |
+| ZIP code searches | 1 (lifetime) | 5 / month | 15 / month |
+| Property reports | 3 (lifetime) | 20 / month | 60 / month |
 
 * **ZIP code search** — each *different* ZIP searched in the period. Re-running a ZIP already
   searched, changing filters or sorting never counts.
@@ -25,19 +25,41 @@ user between plans by hand, reset a user's usage, or disable an account.
 
 ## Why these prices
 
-A new ZIP search costs about 2 RentCast requests (sale listings + rental listings) and a property
-report about 1. Worst case per month (every allowance used):
+The numbers below assume RentCast's **Foundation** plan: $74 a month for 1,000 requests, then $0.06
+per request (check current prices at <https://www.rentcast.io/api>).
 
-| Plan | Requests | Cost on RentCast Developer overage ($0.20) | Cost on a ~$0.07/request plan |
-|---|---|---|---|
-| Free | 1×2 + 3 = 5 (once) | $1.00 | $0.35 |
-| Pro | 15×2 + 75 = 105 | $21 | ≈ $7.75 |
-| Premium | 50×2 + 250 = 350 | $70 | ≈ $26 |
+**What each action costs in RentCast requests**
 
-Typical users use a fraction of their allowance, and searches of the same ZIP by different users
-share the cache. Still, staying on RentCast's free Developer plan with paying users loses money on
-heavy users — move to a paid RentCast tier (check current prices on rentcast.io) once you have a few
-subscribers. Prices and allowances can be tuned at any time in the admin page.
+| Action | Requests |
+|---|---|
+| First search of a ZIP | 2 (one page of homes for sale + one page of rentals) |
+| Same ZIP again within the listing cache period (default 1 day) | 0 |
+| Same ZIP again later | 1 (homes for sale only; area rents are kept 30 days) |
+| Every 500 homes for sale beyond the first 500 | +1 |
+| Property report | 1 (rent estimate) + 1 for a value estimate + 1 for a tax record: 1.5 on average, 3 at most |
+
+All of these are shared: every user searching the same ZIP or opening the same property reuses the
+same cached data.
+
+**Worst realistic month per user** (every allowance used, each ZIP re-checked on 4 more days, no
+sharing with other users), with Stripe's 2.9% + $0.30 per payment:
+
+| Plan | Requests | RentCast cost at $0.06 | Price after Stripe fees | Left over |
+|---|---|---|---|---|
+| Free (once, not monthly) | 1×2 + 3×1.5 = 6.5 | $0.39 | $0 | −$0.39 per signup |
+| Pro $19 | 5×6 + 20×1.5 = 60 | $3.60 | $18.15 | $14.55 |
+| Premium $49 | 15×6 + 60×1.5 = 180 | $10.80 | $47.28 | $36.48 |
+
+**Break-even.** Fixed costs are the RentCast plan ($74) plus hosting. Five Pro subscribers
+(5 × $18.15 = $90.75) cover the RentCast plan; six cover it with about $30 of paid hosting. The 1,000
+included requests are enough for about 16 Pro subscribers who use their whole allowance.
+
+**When to move up a RentCast tier.** Growth ($199 for 5,000, then $0.03) is cheaper than Foundation
+above about 3,100 requests a month; Scale ($449 for 25,000) is cheaper than Growth above about 13,300.
+
+Prices and allowances can be tuned at any time in the admin page. Set the RentCast budget under
+**Admin Portal → API usage** to match your RentCast plan (for Foundation: 1,000 requests, $0.074 per
+request), or searches stop at the old default of 50 requests.
 
 ## Online payments (Stripe)
 
