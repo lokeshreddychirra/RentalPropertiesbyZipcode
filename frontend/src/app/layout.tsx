@@ -8,7 +8,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "PropertyYield AI", template: "%s · PropertyYield AI" },
-  description: "Find and analyse residential investment properties by rental yield, cash flow and risk-adjusted return.",
+  description: "Type any US ZIP code and see every home for sale ranked as a rental by monthly cash flow, cap rate and cash on cash return. Your first search is free.",
   applicationName: "PropertyYield AI",
   appleWebApp: { capable: true, title: "PropertyYield", statusBarStyle: "black-translucent" },
   formatDetection: { telephone: false },

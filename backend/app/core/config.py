@@ -53,9 +53,11 @@ class Settings(BaseSettings):
     # Enable only if your RentCast API version supports ``min:max`` range syntax
     # on numeric query parameters. When false, ranges are filtered locally.
     rentcast_range_filters: bool = False
-    rentcast_cost_per_request_usd: Decimal = Decimal("0.20")
-    rentcast_monthly_request_budget: int = 50
-    rentcast_monthly_cost_budget_usd: Decimal = Decimal("25")
+    # Defaults for RentCast's Foundation plan ($74 for 1,000 requests a month, then $0.06 each), with a
+    # 500 request safety limit. Administrators change the budget under Admin Portal -> API usage.
+    rentcast_cost_per_request_usd: Decimal = Decimal("0.074")
+    rentcast_monthly_request_budget: int = 500
+    rentcast_monthly_cost_budget_usd: Decimal = Decimal("74")
 
     # --- AirDNA (short-term rental analytics) -------------------------------
     airdna_api_key: SecretStr | None = None

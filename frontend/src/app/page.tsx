@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Reveal, TaglineReveal } from "@/components/marketing/reveal";
+import { ScoreRing } from "@/components/property/bits";
 import { SearchExperience } from "@/components/search/search-experience";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/card";
@@ -34,22 +35,35 @@ const DEMO_STARTERS: Starter[] = [
 ];
 
 const BENEFITS: { icon: React.ComponentType<{ className?: string }>; title: string; body: string }[] = [
-  { icon: MapPin, title: "Every listing in the ZIP", body: "Each home for sale is modelled as a long term rental with rent, expenses and a mortgage." },
-  { icon: Gauge, title: "Ranked by real returns", body: "Cash flow, cap rate and cash on cash are calculated with financing, not guessed from price or rent alone." },
-  { icon: ShieldAlert, title: "Honest about data", body: "Every figure is labelled as sourced, estimated or a default, with a confidence rating." },
+  { icon: MapPin, title: "Every home, not a shortlist", body: "Every listing for sale in the ZIP code is analysed, so the best deal never hides on page three." },
+  { icon: Gauge, title: "Cash flow after every cost", body: "Rent minus vacancy, taxes, insurance, management, repairs and the mortgage. What is left is what you keep." },
+  { icon: ShieldAlert, title: "Know what to double check", body: "Every figure is marked as sourced, estimated or a default, with a confidence rating." },
 ];
 
 const STEPS: { icon: React.ComponentType<{ className?: string }>; title: string; body: string }[] = [
-  { icon: Search, title: "Enter a ZIP code", body: "We load every active listing there and screen it against your filters." },
-  { icon: LineChart, title: "See every home ranked", body: "Each home gets a rent estimate, its running costs and a mortgage, then a score out of 100." },
-  { icon: SlidersHorizontal, title: "Test your own deal", body: "Open any home and slide the price, down payment, rate and rent to see your returns change." },
+  { icon: Search, title: "Enter a ZIP code", body: "Any US ZIP code. We pull every home for sale there and the rents around it." },
+  { icon: LineChart, title: "See the best deals first", body: "Each home gets a rent estimate, its running costs, a mortgage and a score out of 100." },
+  { icon: SlidersHorizontal, title: "Make it your deal", body: "Open any home and change the price, down payment, rate and rent. Your returns update as you type." },
 ];
 
-const FAQ: [string, string][] = [
+/** "Your first ZIP search is free" / "Your first 2 ZIP searches are free", from the live Free plan. */
+function useFreeSearches(): number | null {
+  const plans = useQuery({ queryKey: ["plans"], queryFn: api.plans, staleTime: 60_000 });
+  const free = plans.data?.plans.find((plan) => plan.key === "free");
+  return free?.zip_searches ?? null;
+}
+
+function freeSearchesLabel(count: number | null): string {
+  if (!count || count <= 1) return "Your first ZIP search is free";
+  return `Your first ${count} ZIP searches are free`;
+}
+
+const faq = (freeLabel: string): [string, string][] => [
   ["Where does the data come from?", "Listings and rent estimates come from RentCast. Every figure on a property is labelled as sourced, estimated or a default, so you can see what to verify."],
   ["How is monthly cash flow calculated?", "Rent minus vacancy, property tax, insurance, management, maintenance, a capital reserve and the mortgage payment. The defaults are 25% down at 7% over 30 years, and you can change all of them."],
   ["Can I use my own numbers?", "Yes. Open any property and use the deal simulator to change the price, down payment, interest rate, rent and costs. Every metric updates as you go."],
-  ["How many searches do I get?", "Each search covers one ZIP code. A free account includes your first search, and paid plans add more searches every month. See Plans & pricing for details."],
+  ["How fast is a search?", "Most ZIP codes are ready in a few seconds. Larger ones show the first homes straight away while the rest load."],
+  ["Do I need a credit card?", `No. ${freeLabel} with a free account. Paid plans add more searches every month; see Plans & pricing.`],
   ["Does it cover vacation rentals?", "No. Every home is evaluated as a long term rental."],
   ["Is this financial advice?", "No. The estimates and projections are for research only. Verify listings, rents and taxes independently before you invest."],
 ];
@@ -71,22 +85,69 @@ function Hero({ compact }: { compact: boolean }) {
       </div>
     );
   }
-  const demo = status?.data_mode === "demo";
+  return <FullHero demo={status?.data_mode === "demo"} guest={!user} />;
+}
+
+function FullHero({ demo, guest }: { demo: boolean; guest: boolean }) {
+  const free = useFreeSearches();
   return (
     <div>
       {/* Two lines, broken where the thought breaks; on phones the text flows and balances. */}
       <h1 className="heading-4 hero-gradient max-w-[680px] text-balance pb-1 sm:heading-3 lg:heading-2">
-        Know what a rental earns <br className="hidden sm:block" />
-        <span className="text-brand">before you make an offer</span>
+        Type a ZIP code. <br className="hidden sm:block" />
+        <span className="text-brand">See which homes pay you every month.</span>
       </h1>
       <p className="body-3 mt-4 max-w-[680px] text-pretty text-muted-foreground">
-        Enter a US ZIP code. Every home for sale there is modelled as a long term rental and ranked by cash flow, cap rate and cash on cash return.
+        We run the numbers on every home for sale in that ZIP code as a long term rental: rent, taxes, insurance, repairs and the mortgage. Then we rank
+        them by the cash they leave in your pocket.
       </p>
       <p className="caption-4 mt-3 text-pretty text-muted-foreground" data-testid="proof-line">
-        {demo ? "Demo mode: sample listings for a set of demo ZIP codes" : "Listing and rent data from RentCast"}
-        {!user ? " · Your first ZIP search is free" : null}
+        {demo ? "Demo mode: sample listings for a set of demo ZIP codes" : "Live listings and rents from RentCast · Every home analysed, not a sample"}
+        {guest ? ` · ${freeSearchesLabel(free)}, no card needed` : null}
       </p>
     </div>
+  );
+}
+
+/** What a result looks like, beside the hero. Clearly an example: no real listing or claim. */
+const EXAMPLE_METRICS: [string, string, string?][] = [
+  ["Rent estimate", "$1,950/mo"],
+  ["Cash flow", "+$254/mo", "text-positive"],
+  ["Cap rate", "7.6%"],
+  ["Gross yield", "12.3%"],
+  ["Cash on cash", "5.7%"],
+  ["Cash needed", "$53,172"],
+];
+
+function HeroPreview() {
+  return (
+    <figure className="glass rounded-2xl p-6" aria-label="Example of a ranked result">
+      <figcaption className="caption-4 flex items-center justify-between gap-3 text-muted-foreground">
+        <span>Example result</span>
+        <span className="rounded-full border px-2 py-0.5">For illustration</span>
+      </figcaption>
+      <div className="mt-4 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="heading-5 tnum">$189,900</p>
+          <p className="body-6 mt-1 text-muted-foreground">3 bed · 2 bath single family · 1,480 sqft</p>
+        </div>
+        <div className="flex shrink-0 flex-col items-center gap-1">
+          <ScoreRing score={74} size={52} />
+          <span className="caption-5 text-muted-foreground">Score</span>
+        </div>
+      </div>
+      <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {EXAMPLE_METRICS.map(([label, value, tone]) => (
+          <div key={label} className="rounded-xl bg-muted/50 px-3 py-2">
+            <dt className="caption-5 text-muted-foreground">{label}</dt>
+            <dd className={cn("title-3 tnum mt-0.5", tone)}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="caption-5 mt-4 text-pretty text-muted-foreground">
+        Every home in your search gets this, with 25% down at 7% as the starting point. Change any assumption on the property page.
+      </p>
+    </figure>
   );
 }
 
@@ -131,6 +192,7 @@ function QuickStart() {
   const saved = useQuery({ queryKey: ["saved-searches", user?.id], queryFn: api.savedSearches, enabled: !!user });
   const starters = status?.data_mode === "demo" ? DEMO_STARTERS : LIVE_STARTERS;
   const guest = !loading && !user;
+  const free = useFreeSearches();
 
   return (
     <div className="space-y-16 pt-2">
@@ -157,7 +219,7 @@ function QuickStart() {
       ) : null}
 
       <section className="space-y-4">
-        <SectionHeading title="Try a market" sub="One click runs a ready made search." />
+        <SectionHeading title="Not sure where to start? Try a market" sub="One click runs a ready made search, ranked and ready to compare." />
         <div className="grid gap-3 sm:grid-cols-3">
           {starters.map((starter) => (
             <Link
@@ -218,24 +280,26 @@ function QuickStart() {
           </Reveal>
 
           <section aria-label="What PropertyYield does" className="py-16">
-            <TaglineReveal className="heading-3" lines={["Every home for sale,", "priced as a rental and ranked", "by the cash it puts in your pocket."]} />
+            <TaglineReveal className="heading-3" lines={["Stop guessing which homes cash flow.", "Search a ZIP code and see", "every one ranked in seconds."]} />
           </section>
 
           <Reveal className="space-y-6" aria-labelledby="faq-title">
             <SectionHeading title="Questions investors ask" />
             <div className="grid max-w-3xl gap-3">
-              {FAQ.map(([q, a]) => (
+              {faq(freeSearchesLabel(free)).map(([q, a]) => (
                 <FaqItem key={q} question={q} answer={a} />
               ))}
             </div>
           </Reveal>
 
           <Reveal className="glass ring-brand rounded-2xl px-6 py-12 text-center">
-            <h2 className="heading-5 mx-auto max-w-[680px] text-balance">Check your first ZIP code free</h2>
-            <p className="body-6 mx-auto mt-2 max-w-[680px] text-pretty text-muted-foreground">Create a free account and see every home for sale ranked by cash flow. No card required.</p>
+            <h2 className="heading-5 mx-auto max-w-[680px] text-balance">See which homes in your ZIP code cash flow</h2>
+            <p className="body-6 mx-auto mt-2 max-w-[680px] text-pretty text-muted-foreground">
+              {freeSearchesLabel(free)} with a free account. No card, no sales call, results in seconds.
+            </p>
             <div className="mt-6 flex flex-wrap justify-center gap-3">
               <Button size="lg" onClick={focusSearch}>
-                <Search /> Find rentals
+                <Search /> Search a ZIP code
               </Button>
             </div>
           </Reveal>
@@ -248,7 +312,7 @@ function QuickStart() {
 export default function DashboardPage() {
   return (
     <React.Suspense fallback={<div className="p-6"><Skeleton className="h-40 w-full" /></div>}>
-      <SearchExperience basePath="/" heading={(active) => <Hero compact={active} />} idle={<QuickStart />} />
+      <SearchExperience basePath="/" heading={(active) => <Hero compact={active} />} idle={<QuickStart />} heroAside={<HeroPreview />} />
     </React.Suspense>
   );
 }

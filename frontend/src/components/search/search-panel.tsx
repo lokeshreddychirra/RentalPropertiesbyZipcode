@@ -148,7 +148,7 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
             <Input
               id="f-location"
               aria-label="ZIP code"
-              placeholder="ZIP code, like 38116"
+              placeholder="Enter a ZIP code, like 38116"
               inputMode="numeric"
               maxLength={5}
               value={form.location}
@@ -157,8 +157,8 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
               className="body-3 h-12 rounded-lg pl-12"
             />
           </div>
-          <Button type="submit" size="lg" disabled={busy} className="h-12 px-4" aria-label={busy ? "Searching" : "Find rentals"}>
-            <Search /> <span className="hidden sm:inline">{busy ? "Searching…" : "Find rentals"}</span>
+          <Button type="submit" size="lg" disabled={busy} className="h-12 px-4" aria-label={busy ? "Searching" : "Find deals"}>
+            <Search /> <span className="hidden sm:inline">{busy ? "Searching…" : "Find deals"}</span>
           </Button>
         </div>
 
