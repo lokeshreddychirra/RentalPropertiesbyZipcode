@@ -24,3 +24,6 @@ playwright-report/
 test-results/
 # Deployment parameters may reference secrets
 infra/azure/main.parameters.json
+
+# Local Redis snapshots
+dump.rdb
