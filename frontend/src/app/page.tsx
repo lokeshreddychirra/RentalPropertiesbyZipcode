@@ -74,7 +74,6 @@ function focusSearch() {
 }
 
 function Hero({ compact }: { compact: boolean }) {
-  const { data: status } = useStatus();
   const { user } = useSession();
   if (compact) {
     return (
@@ -84,7 +83,7 @@ function Hero({ compact }: { compact: boolean }) {
       </div>
     );
   }
-  return <FullHero demo={status?.data_mode === "demo"} guest={!user} />;
+  return <FullHero guest={!user} />;
 }
 
 /** Hero messages, rotating above the search box. The first one is the page's real headline. */
@@ -117,9 +116,9 @@ const HERO_MESSAGES: { lead: string; punch: string; body: string }[] = [
 ];
 
 /** How long each hero message stays up. */
-const HERO_ROTATE_MS = 2500;
+const HERO_ROTATE_MS = 5000;
 
-function FullHero({ demo, guest }: { demo: boolean; guest: boolean }) {
+function FullHero({ guest }: { guest: boolean }) {
   const free = useFreeSearches();
   const [index, setIndex] = React.useState(0);
   const [paused, setPaused] = React.useState(false);
@@ -154,10 +153,11 @@ function FullHero({ demo, guest }: { demo: boolean; guest: boolean }) {
           </div>
         ))}
       </div>
-      <p className="caption-4 mt-2 text-pretty text-muted-foreground" data-testid="proof-line">
-        {demo ? "Demo mode: sample listings for a set of demo ZIP codes" : "Live listings and rents from RentCast · Every home analysed, not a sample"}
-        {guest ? ` · ${freeSearchesLabel(free)}, no card needed` : null}
-      </p>
+      {guest ? (
+        <p className="caption-4 mt-2 text-pretty text-muted-foreground" data-testid="proof-line">
+          {freeSearchesLabel(free)}, no card needed
+        </p>
+      ) : null}
     </div>
   );
 }
