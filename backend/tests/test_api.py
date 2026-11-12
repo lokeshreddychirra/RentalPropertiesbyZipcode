@@ -263,14 +263,6 @@ async def test_natural_language_parse(client):
     assert body["unsupported"][0]["criterion"] == "school quality"
 
 
-async def test_market_summary(client):
-    body = (await client.get(f"{API}/market/summary", params={"zip_codes": ["30310", "32413"]})).json()
-    assert body["is_demo"] and len(body["markets"]) == 2
-    market = body["markets"][0]
-    assert market["gross_yield_pct"] > 0 and len(market["stats"]["history"]) == 12 and market["yield_by_bedrooms"]
-    assert (await client.get(f"{API}/market/summary")).status_code == 422
-
-
 async def test_auth_favorites_saved_searches_and_admin(anon_client):
     client = anon_client
     assert (await client.get(f"{API}/favorites")).status_code == 401

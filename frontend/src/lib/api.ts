@@ -10,7 +10,6 @@ import type {
   Favorite,
   FinancingPreset,
   MapResults,
-  MarketSummary,
   Meta,
   NLParseResult,
   NotificationList,
@@ -169,7 +168,6 @@ export const api = {
   deleteSavedAnalysis: (id: string) => request<void>(`/analysis/saved/${id}`, { method: "DELETE" }),
 
   // --- market
-  market: (params: { zip_codes?: string[]; city?: string; state?: string }) => request<MarketSummary>(`/market/summary${qs(params)}`),
 
   // --- saved
   favorites: (defaults: AssumptionOverrides | null, weights: ScoreWeights | null) => request<Favorite[]>("/favorites/query", { method: "POST", json: { defaults, weights } }),

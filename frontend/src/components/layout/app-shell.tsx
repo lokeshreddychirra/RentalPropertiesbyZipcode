@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Menu, Moon, Search, Sun, TrendingUp, User as UserIcon, Users } from "@/components/ui/icons";
+import { Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Menu, Moon, Search, Sun, TrendingUp, User as UserIcon, Users } from "@/components/ui/icons";
 import { AppRuntime } from "@/components/layout/app-runtime";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/card";
@@ -18,7 +18,6 @@ const NAV: { href: string; label: string; icon: typeof Search; access: Access }[
   { href: "/", label: "Dashboard", icon: LayoutDashboard, access: "everyone" },
   { href: "/compare", label: "Property Comparison", icon: GitCompareArrows, access: "everyone" },
   { href: "/saved", label: "Saved Properties", icon: Bookmark, access: "user" },
-  { href: "/market", label: "Market Analytics", icon: BarChart3, access: "everyone" },
   { href: "/pricing", label: "Plans & Pricing", icon: CreditCard, access: "everyone" },
   { href: "/admin/users", label: "Admin Portal", icon: Users, access: "admin" },
 ];
@@ -253,7 +252,6 @@ function BottomNav({ onMore, moreOpen }: { onMore: () => void; moreOpen: boolean
   const tabs: { href: string; label: string; icon: typeof Search; badge?: number }[] = [
     { href: "/", label: "Search", icon: Search },
     { href: "/compare", label: "Compare", icon: GitCompareArrows, badge: compare.length },
-    { href: "/market", label: "Markets", icon: BarChart3 },
     user ? { href: "/saved", label: "Saved", icon: Bookmark } : { href: "/pricing", label: "Plans", icon: CreditCard },
   ];
   const item = "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[11px] font-medium leading-none transition-colors";

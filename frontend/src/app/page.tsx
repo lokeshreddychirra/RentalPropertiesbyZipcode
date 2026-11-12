@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Reveal, TaglineReveal } from "@/components/marketing/reveal";
-import { ScoreRing } from "@/components/property/bits";
 import { SearchExperience } from "@/components/search/search-experience";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/card";
@@ -109,44 +108,66 @@ function FullHero({ demo, guest }: { demo: boolean; guest: boolean }) {
   );
 }
 
-/** What a result looks like, beside the hero. Clearly an example: no real listing or claim. */
-const EXAMPLE_METRICS: [string, string, string?][] = [
-  ["Rent estimate", "$1,950/mo"],
-  ["Cash flow", "+$254/mo", "text-positive"],
-  ["Cap rate", "7.6%"],
-  ["Gross yield", "12.3%"],
-  ["Cash on cash", "5.7%"],
-  ["Cash needed", "$53,172"],
+/** Investing wisdom beside the hero: one line at a time, rotating gently. */
+const QUOTES: { text: string; by?: string }[] = [
+  { text: "Don't wait to buy real estate. Buy real estate and wait.", by: "Investor proverb" },
+  { text: "You make your money when you buy, not when you sell.", by: "Investor proverb" },
+  { text: "Price is what you pay. Value is what you get.", by: "Warren Buffett" },
+  { text: "Your tenants pay the mortgage. You keep the house." },
+  { text: "Buy the cash flow, not the hype." },
+  { text: "Know the numbers before you fall in love with the kitchen." },
+  { text: "A good rental pays you every month. A great one pays you again when you sell." },
 ];
 
-function HeroPreview() {
+const QUOTE_SECONDS = 6;
+
+function HeroQuotes() {
+  const [index, setIndex] = React.useState(0);
+  const [paused, setPaused] = React.useState(false);
+  React.useEffect(() => {
+    if (paused || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => setIndex((i) => (i + 1) % QUOTES.length), QUOTE_SECONDS * 1000);
+    return () => window.clearInterval(timer);
+  }, [paused]);
+  const quote = QUOTES[index];
   return (
-    <figure className="glass rounded-2xl p-6" aria-label="Example of a ranked result">
-      <figcaption className="caption-4 flex items-center justify-between gap-3 text-muted-foreground">
-        <span>Example result</span>
-        <span className="rounded-full border px-2 py-0.5">For illustration</span>
-      </figcaption>
-      <div className="mt-4 flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="heading-5 tnum">$189,900</p>
-          <p className="body-6 mt-1 text-muted-foreground">3 bed · 2 bath single family · 1,480 sqft</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-center gap-1">
-          <ScoreRing score={74} size={52} />
-          <span className="caption-5 text-muted-foreground">Score</span>
-        </div>
+    <figure
+      className="glass relative overflow-hidden rounded-2xl p-6 sm:p-8"
+      aria-label="Quotes on investing in rental property"
+      data-testid="hero-quotes"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
+      <span aria-hidden className="pointer-events-none absolute -top-6 right-4 select-none font-serif text-[160px] leading-none text-brand opacity-15">
+        &ldquo;
+      </span>
+      <p className="caption-4 text-muted-foreground">Words to invest by</p>
+      {/* Fixed height so the card never jumps as quotes of different lengths rotate. */}
+      <div className="mt-4 flex min-h-[168px] flex-col justify-center sm:min-h-[184px]" aria-live="polite">
+        <blockquote key={index} className="animate-in fade-in slide-in-from-bottom-1 duration-500">
+          <p className="heading-5 text-balance sm:heading-4">&ldquo;{quote.text}&rdquo;</p>
+          {quote.by ? <footer className="body-6 mt-3 text-muted-foreground">{quote.by}</footer> : null}
+        </blockquote>
       </div>
-      <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {EXAMPLE_METRICS.map(([label, value, tone]) => (
-          <div key={label} className="rounded-xl bg-muted/50 px-3 py-2">
-            <dt className="caption-5 text-muted-foreground">{label}</dt>
-            <dd className={cn("title-3 tnum mt-0.5", tone)}>{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <p className="caption-5 mt-4 text-pretty text-muted-foreground">
-        Every home in your search gets this, with 25% down at 7% as the starting point. Change any assumption on the property page.
-      </p>
+      <div className="mt-6 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-1.5" aria-label="Choose a quote">
+          {QUOTES.map((q, i) => (
+            <button
+              key={q.text}
+              type="button"
+              aria-current={i === index ? "true" : undefined}
+              aria-label={`Quote ${i + 1} of ${QUOTES.length}`}
+              onClick={() => setIndex(i)}
+              className={cn("h-1.5 rounded-full transition-all", i === index ? "w-6 bg-primary" : "w-1.5 bg-muted-foreground/40 hover:bg-muted-foreground/70")}
+            />
+          ))}
+        </div>
+        <button type="button" onClick={focusSearch} className="body-6 inline-flex items-center gap-1 font-medium text-brand hover:underline">
+          Find your deal <ArrowRight className="size-4" aria-hidden />
+        </button>
+      </div>
     </figure>
   );
 }
@@ -312,7 +333,7 @@ function QuickStart() {
 export default function DashboardPage() {
   return (
     <React.Suspense fallback={<div className="p-6"><Skeleton className="h-40 w-full" /></div>}>
-      <SearchExperience basePath="/" heading={(active) => <Hero compact={active} />} idle={<QuickStart />} heroAside={<HeroPreview />} />
+      <SearchExperience basePath="/" heading={(active) => <Hero compact={active} />} idle={<QuickStart />} heroAside={<HeroQuotes />} />
     </React.Suspense>
   );
 }

@@ -679,29 +679,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/market/summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Market Summary
-         * @description Rent, price and yield statistics per ZIP code.
-         *
-         *     Pass ZIP codes directly, or a city and state — the ZIP codes are then taken from listings already
-         *     retrieved for that city (run a property search there first).
-         */
-        get: operations["market_summary_api_v1_market_summary_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/favorites": {
         parameters: {
             query?: never;
@@ -1416,49 +1393,6 @@ export interface components {
             tone: "positive" | "warning" | "negative" | "neutral";
             /** Detail */
             detail: string;
-        };
-        /** BedroomStat */
-        BedroomStat: {
-            /** Bedrooms */
-            bedrooms: number;
-            /** Median */
-            median?: number | null;
-            /** Average */
-            average?: number | null;
-            /** Low */
-            low?: number | null;
-            /** High */
-            high?: number | null;
-            /**
-             * Count
-             * @default 0
-             */
-            count: number;
-            /** Median Price Per Sqft */
-            median_price_per_sqft?: number | null;
-            /** Median Days On Market */
-            median_days_on_market?: number | null;
-        };
-        /** BedroomYield */
-        BedroomYield: {
-            /** Bedrooms */
-            bedrooms: number;
-            /** Median Rent */
-            median_rent?: number | null;
-            /** Median Price */
-            median_price?: number | null;
-            /** Gross Yield Pct */
-            gross_yield_pct?: number | null;
-            /**
-             * Rental Sample
-             * @default 0
-             */
-            rental_sample: number;
-            /**
-             * Sale Sample
-             * @default 0
-             */
-            sale_sample: number;
         };
         /** BudgetUpdate */
         BudgetUpdate: {
@@ -2309,100 +2243,6 @@ export interface components {
             points: components["schemas"]["MapPoint"][];
             /** Total */
             total: number;
-        };
-        /** MarketHistoryPoint */
-        MarketHistoryPoint: {
-            /** Month */
-            month: string;
-            /** Median Rent */
-            median_rent?: number | null;
-            /** Median Sale Price */
-            median_sale_price?: number | null;
-            /** Rental Listings */
-            rental_listings?: number | null;
-            /** Sale Listings */
-            sale_listings?: number | null;
-        };
-        /** MarketStats */
-        MarketStats: {
-            /** Provider */
-            provider: string;
-            /** Zip Code */
-            zip_code: string;
-            /** Median Rent */
-            median_rent?: number | null;
-            /** Average Rent */
-            average_rent?: number | null;
-            /**
-             * Rental Listings
-             * @default 0
-             */
-            rental_listings: number;
-            /** Median Rent Per Sqft */
-            median_rent_per_sqft?: number | null;
-            /** Rental Median Days On Market */
-            rental_median_days_on_market?: number | null;
-            /** Rent By Bedrooms */
-            rent_by_bedrooms?: components["schemas"]["BedroomStat"][];
-            /** Median Sale Price */
-            median_sale_price?: number | null;
-            /** Average Sale Price */
-            average_sale_price?: number | null;
-            /**
-             * Sale Listings
-             * @default 0
-             */
-            sale_listings: number;
-            /** Median Price Per Sqft */
-            median_price_per_sqft?: number | null;
-            /** Sale Median Days On Market */
-            sale_median_days_on_market?: number | null;
-            /** Sale By Bedrooms */
-            sale_by_bedrooms?: components["schemas"]["BedroomStat"][];
-            /** History */
-            history?: components["schemas"]["MarketHistoryPoint"][];
-            /**
-             * Fetched At
-             * Format: date-time
-             */
-            fetched_at: string;
-            /**
-             * Is Demo
-             * @default false
-             */
-            is_demo: boolean;
-            /**
-             * Source
-             * @default market_api
-             */
-            source: string;
-        };
-        /** MarketSummary */
-        MarketSummary: {
-            /** Zip Codes */
-            zip_codes: string[];
-            /** Markets */
-            markets: components["schemas"]["ZipMarket"][];
-            /**
-             * Unavailable
-             * @default []
-             */
-            unavailable: string[];
-            /**
-             * Notes
-             * @default []
-             */
-            notes: string[];
-            /**
-             * Is Demo
-             * @default false
-             */
-            is_demo: boolean;
-            /**
-             * Methodology
-             * @default Gross yield = median monthly rent × 12 / median asking price, from active listings in the ZIP code. It compares typical rents with typical prices and is not the yield of any specific property.
-             */
-            methodology: string;
         };
         /** Meta */
         Meta: {
@@ -4355,24 +4195,6 @@ export interface components {
              */
             property_count: number;
         };
-        /** ZipMarket */
-        ZipMarket: {
-            stats: components["schemas"]["MarketStats"];
-            /** City */
-            city?: string | null;
-            /** State */
-            state?: string | null;
-            /** Price To Rent Ratio */
-            price_to_rent_ratio?: number | null;
-            /** Gross Yield Pct */
-            gross_yield_pct?: number | null;
-            /**
-             * Yield By Bedrooms
-             * @default []
-             */
-            yield_by_bedrooms: components["schemas"]["BedroomYield"][];
-            legality: components["schemas"]["LegalityInfo"];
-        };
     };
     responses: never;
     parameters: never;
@@ -5497,40 +5319,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    market_summary_api_v1_market_summary_get: {
-        parameters: {
-            query?: {
-                /** @description Up to 8 ZIP codes */
-                zip_codes?: string[] | null;
-                city?: string | null;
-                state?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketSummary"];
-                };
             };
             /** @description Validation Error */
             422: {

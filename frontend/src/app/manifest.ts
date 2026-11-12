@@ -21,7 +21,6 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: "Map view", url: "/?view=map", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: "Market analytics", url: "/market", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
     ],
   };
 }

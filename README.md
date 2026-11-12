@@ -105,7 +105,6 @@ POST /analysis/calculate                    full financial model with overrides
 POST /analysis/compare                      up to five properties
 POST /analysis/scenarios                    scenarios + sensitivity
 POST /analysis/ai-explanation               grounded explanation
-GET  /market/summary                        ZIP-level market statistics
 POST /searches/save · GET /searches/saved   saved searches and alerts
 GET  /favorites · /watchlists · /notifications
 GET  /system/status · /system/usage · PUT /system/budgets/{provider}

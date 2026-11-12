@@ -442,23 +442,6 @@ async def get_market_stats(providers: ProviderSet, zip_code: str, *, refresh: bo
     return stats
 
 
-
-async def cached_market_stats(providers: ProviderSet, zip_code: str) -> MarketStats | None:
-    """Fresh stored statistics for a ZIP (market API first, then rental-listing aggregates) — never a paid call."""
-    market = providers.market
-    if market is None:
-        return None
-    cutoff = datetime.now(UTC) - timedelta(days=get_settings().market_stats_ttl_days)
-    async with session_scope() as session:
-        rows = (
-            await session.execute(
-                select(MarketSnapshot).where(MarketSnapshot.zip_code == zip_code, MarketSnapshot.provider_key.in_([market.key, _rentals_key(market.key)]), MarketSnapshot.fetched_at >= cutoff)
-            )
-        ).scalars().all()
-    by_key = {row.provider_key: MarketStats.model_validate(row.data) for row in rows}
-    return by_key.get(market.key) or by_key.get(_rentals_key(market.key))
-
-
 def _rentals_key(provider_key: str) -> str:
     return f"{provider_key}:rentals"
 
