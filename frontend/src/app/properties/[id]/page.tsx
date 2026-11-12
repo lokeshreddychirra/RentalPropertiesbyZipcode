@@ -85,6 +85,17 @@ function Gallery({ detail }: { detail: PropertyDetail }) {
  * Offers the exact rent estimate for this address. It replaces the ZIP's area rent in every figure and uses
  * one of the user's property reports; a property already unlocked (by anyone) in the last 30 days is free.
  */
+/** Where the rent used in the analysis comes from, in plain words. */
+function rentSource(userSet: boolean, estimate: RentEstimate | undefined, zip: string | null | undefined): string {
+  if (userSet) return "Your number, set in the deal simulator";
+  if (!estimate?.available) return estimate ? "No rent estimate yet. Enter one in the deal simulator." : "Loading the rent estimate…";
+  if (estimate.level === "property") {
+    const range = estimate.rent_low != null && estimate.rent_high != null ? ` · range ${usd(estimate.rent_low)} to ${usd(estimate.rent_high)}` : "";
+    return `Exact estimate for this address${range}`;
+  }
+  return `Area estimate for ZIP ${zip ?? ""}${estimate.market_sample ? `, from ${estimate.market_sample} rental listings for similar homes` : ""}`;
+}
+
 function ExactRentPrompt({
   estimate,
   zip,
@@ -92,6 +103,7 @@ function ExactRentPrompt({
   busy,
   onRequest,
   inline = false,
+  compact = false,
 }: {
   estimate: RentEstimate | undefined;
   zip: string | null | undefined;
@@ -99,6 +111,8 @@ function ExactRentPrompt({
   busy: boolean;
   onRequest: () => void;
   inline?: boolean;
+  /** Only the action (button and allowance), for the rent row on the headline card. */
+  compact?: boolean;
 }) {
   const { user } = useSession();
   const account = useAccount();
@@ -119,6 +133,41 @@ function ExactRentPrompt({
         : "Uses 1 property report";
   const outOfReports = !!user && left === 0;
 
+  const action = failed ? (
+    outOfReports ? (
+      <Button asChild size="sm" variant="outline">
+        <Link href="/pricing">See plans</Link>
+      </Button>
+    ) : null
+  ) : !user ? (
+    <Button asChild size="sm">
+      <Link href={`/login?mode=register&next=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/")}`}>Create a free account</Link>
+    </Button>
+  ) : outOfReports ? (
+    <div className="flex flex-col items-start gap-1 sm:items-end">
+      <Button asChild size="sm" variant="outline">
+        <Link href="/pricing">Get more property reports</Link>
+      </Button>
+      <span className="caption-5 text-muted-foreground">No property reports left{info?.monthly ? " this month" : ""}</span>
+    </div>
+  ) : (
+    <div className="flex flex-col items-start gap-1 sm:items-end">
+      <Button size="sm" onClick={onRequest} disabled={busy} data-testid="get-exact-rent">
+        {busy ? "Getting the exact rent…" : "Get the exact rent for this address"}
+      </Button>
+      <span className="caption-5 text-muted-foreground">{allowance}</span>
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div className="flex flex-col items-start gap-1 sm:items-end" data-testid="exact-rent">
+        {action}
+        {failed ? <span className="caption-5 max-w-xs text-pretty text-muted-foreground sm:text-right">{estimate.reason}</span> : null}
+      </div>
+    );
+  }
+
   return (
     <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl px-4 py-3", inline ? "bg-muted/50" : "glass")} data-testid="exact-rent">
       <div className="min-w-0 flex-1">
@@ -133,31 +182,7 @@ function ExactRentPrompt({
               : "Get the rent estimate for this address, with the comparable rentals behind it."}
         </p>
       </div>
-      {failed ? (
-        outOfReports ? (
-          <Button asChild size="sm" variant="outline">
-            <Link href="/pricing">See plans</Link>
-          </Button>
-        ) : null
-      ) : !user ? (
-        <Button asChild size="sm">
-          <Link href={`/login?mode=register&next=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/")}`}>Create a free account</Link>
-        </Button>
-      ) : outOfReports ? (
-        <div className="flex flex-col items-end gap-1">
-          <Button asChild size="sm" variant="outline">
-            <Link href="/pricing">Get more property reports</Link>
-          </Button>
-          <span className="caption-5 text-muted-foreground">No property reports left{info?.monthly ? " this month" : ""}</span>
-        </div>
-      ) : (
-        <div className="flex flex-col items-end gap-1">
-          <Button size="sm" onClick={onRequest} disabled={busy} data-testid="get-exact-rent">
-            {busy ? "Getting the exact rent…" : "Get the exact rent for this address"}
-          </Button>
-          <span className="caption-5 text-muted-foreground">{allowance}</span>
-        </div>
-      )}
+      {action}
     </div>
   );
 }
@@ -462,8 +487,26 @@ export default function PropertyPage() {
               {analysisError}
             </Alert>
           ) : null}
-          {analysis ? <HeadlineMetrics analysis={analysis} baseline={baseline} live={live} pending={pending} changed={changed} onReset={() => setOverrides({})} /> : <Skeleton className="h-56 w-full" />}
-          <ExactRentPrompt estimate={rent.data} zip={ctx.zip_code} requested={wantRent} busy={wantRent && rent.isFetching} onRequest={() => setWantRent(true)} />
+          {analysis ? (
+            <HeadlineMetrics
+              analysis={analysis}
+              baseline={baseline}
+              live={live}
+              pending={pending}
+              changed={changed}
+              onReset={() => setOverrides({})}
+              rent={{
+                amount: (overrides.long_term?.monthly_rent as number | undefined) ?? analysis.assumptions.long_term.monthly_rent,
+                source: rentSource(overrides.long_term?.monthly_rent != null, rent.data, ctx.zip_code),
+                action:
+                  overrides.long_term?.monthly_rent == null ? (
+                    <ExactRentPrompt estimate={rent.data} zip={ctx.zip_code} requested={wantRent} busy={wantRent && rent.isFetching} onRequest={() => setWantRent(true)} compact />
+                  ) : null,
+              }}
+            />
+          ) : (
+            <Skeleton className="h-56 w-full" />
+          )}
 
           <Tabs value={tab} onValueChange={setTab}>
             <div className="flex flex-wrap items-center justify-between gap-3">

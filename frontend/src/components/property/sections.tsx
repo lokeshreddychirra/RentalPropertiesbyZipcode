@@ -39,7 +39,30 @@ function Unavailable({ result }: { result: StrategyResult }) {
 
 // ----------------------------------------------------------------------------- recommendation + headline
 
-export function HeadlineMetrics({ analysis, baseline, live, pending, changed, onReset }: { analysis: PropertyAnalysis; baseline?: PropertyAnalysis; live?: QuickLtr | null; pending?: boolean; changed?: boolean; onReset?: () => void }) {
+/** The rent every figure on the card is built on, where it comes from, and an optional action beside it. */
+export interface HeadlineRent {
+  amount: number | null | undefined;
+  source: string;
+  action?: React.ReactNode;
+}
+
+export function HeadlineMetrics({
+  analysis,
+  baseline,
+  live,
+  pending,
+  changed,
+  onReset,
+  rent,
+}: {
+  analysis: PropertyAnalysis;
+  baseline?: PropertyAnalysis;
+  live?: QuickLtr | null;
+  pending?: boolean;
+  changed?: boolean;
+  onReset?: () => void;
+  rent?: HeadlineRent;
+}) {
   const result = analysis.long_term;
   const score = analysis.score_ltr;
   const showLive = Boolean(pending && live);
@@ -71,6 +94,16 @@ export function HeadlineMetrics({ analysis, baseline, live, pending, changed, on
         </div>
       </CardHeader>
       <CardContent>
+        {rent ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-xl bg-muted/50 px-4 py-3" data-testid="headline-rent">
+            <div className="min-w-0">
+              <p className="caption-5 text-muted-foreground">Monthly rent</p>
+              <p className={cn("title-1 tnum transition-opacity", pending && "opacity-60")}>{rent.amount != null ? `${usd(rent.amount)}/mo` : "Not available"}</p>
+              <p className="caption-5 mt-0.5 text-pretty text-muted-foreground">{rent.source}</p>
+            </div>
+            {rent.action}
+          </div>
+        ) : null}
         {result.available || showLive ? (
           <dl className="grid grid-cols-3 gap-x-3 gap-y-3 sm:grid-cols-6" data-testid="headline-metrics">
             {SIM_METRICS.map((metric) => (

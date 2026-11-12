@@ -392,6 +392,24 @@
   background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 48px 48px;
 }
+/* iPhone Safari can count blurred, animated shapes toward the page width even inside overflow: hidden,
+   which lets the whole page slide sideways. clip-path clips filters too, and containment keeps the layer
+   from affecting layout. */
+.aurora {
+  clip-path: inset(0);
+  contain: strict;
+}
+/* Safety net: the page never scrolls sideways. On html this applies to the viewport, so the sticky header
+   keeps working; clip (where supported) does not create a scroll container. */
+html {
+  overflow-x: hidden;
+}
+@supports (overflow: clip) {
+  html,
+  body {
+    overflow-x: clip;
+  }
+}
 .aurora::after {
   /* fade the grid out toward the bottom */
   content: "";
