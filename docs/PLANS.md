@@ -12,8 +12,11 @@ money with RentCast:
 
 * **ZIP code search** — each *different* ZIP searched in the period. Re-running a ZIP already
   searched, changing filters or sorting never counts.
-* **Property report** — a property-level rent/value estimate or tax record that had to be bought
-  from RentCast when a property was opened. Properties already unlocked, or already cached, are free.
+* **Property report** — the exact rent estimate, value estimate or tax record for one address,
+  bought from RentCast when the user asks for it on the property page ("Get the exact rent for this
+  address"). Opening a property is free: it shows the full analysis with the ZIP's area rent from the
+  search. One property counts once however many of the three are fetched; properties already
+  unlocked, or fetched by anyone in the last 30 days, are free.
 * Every search covers exactly **one ZIP code**, on every plan (administrators included).
 * Free allowances are for the lifetime of the account; paid allowances reset on the 1st of each
   month (UTC). Administrators are unlimited. Quotas apply in live data mode only.
@@ -36,7 +39,8 @@ per request (check current prices at <https://www.rentcast.io/api>).
 | Same ZIP again within the listing cache period (default 1 day) | 0 |
 | Same ZIP again later | 1 (homes for sale only; area rents are kept 30 days) |
 | Every 500 homes for sale beyond the first 500 | +1 |
-| Property report | 1 (rent estimate) + 1 for a value estimate + 1 for a tax record: 1.5 on average, 3 at most |
+| Opening a property | 0 (the analysis uses the ZIP's area rent from the search) |
+| Property report, on request | 1 (exact rent estimate) + 1 for a value estimate + 1 for a tax record: 1.5 on average, 3 at most |
 
 All of these are shared: every user searching the same ZIP or opening the same property reuses the
 same cached data.

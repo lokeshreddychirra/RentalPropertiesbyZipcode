@@ -29,8 +29,8 @@ import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle
 import { Dialog, DialogContent, DialogTrigger, Hint, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/overlays";
 import { api, ApiError, errorMessage, type AnalysisBody } from "@/lib/api";
 import { applyOverrides, quickLtr } from "@/lib/ltr-model";
-import { useApp, useFavoriteIds, useSession, useStatus } from "@/lib/store";
-import type { AssumptionOverrides, AssumptionSection, PropertyDetail, Strategy } from "@/lib/types";
+import { useAccount, useApp, useFavoriteIds, useSession, useStatus } from "@/lib/store";
+import type { AssumptionOverrides, AssumptionSection, PropertyDetail, RentEstimate, Strategy } from "@/lib/types";
 import { cn, num, pct, relativeTime, shortDate, titleCase, usd, zillowUrl } from "@/lib/utils";
 
 const INCLUDE: AnalysisBody["include"] = ["forecast", "scenarios", "sensitivity", "financing"];
@@ -77,6 +77,87 @@ function Gallery({ detail }: { detail: PropertyDetail }) {
         </div>
       ) : null}
       {images[active]?.attribution ? <p className="text-[11px] text-muted-foreground">Photo: {images[active].attribution}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Offers the exact rent estimate for this address. It replaces the ZIP's area rent in every figure and uses
+ * one of the user's property reports; a property already unlocked (by anyone) in the last 30 days is free.
+ */
+function ExactRentPrompt({
+  estimate,
+  zip,
+  requested,
+  busy,
+  onRequest,
+  inline = false,
+}: {
+  estimate: RentEstimate | undefined;
+  zip: string | null | undefined;
+  requested: boolean;
+  busy: boolean;
+  onRequest: () => void;
+  inline?: boolean;
+}) {
+  const { user } = useSession();
+  const account = useAccount();
+  if (!estimate || estimate.level === "property" || estimate.is_demo) return null;
+  const area = estimate.available && estimate.level === "market_zip";
+  // The request was made but did not produce an exact estimate (plan limit, no estimate for this address).
+  const failed = requested && !busy && !!estimate.reason && !estimate.can_request;
+  if (!estimate.can_request && !failed) return null;
+
+  const info = account.data;
+  const left = info && info.property_reports_limit != null ? Math.max(info.property_reports_limit - info.property_reports_used, 0) : null;
+  const allowance = !user
+    ? "Free with an account"
+    : info?.unlimited || (info && info.property_reports_limit == null)
+      ? "Included with your account"
+      : left != null
+        ? `Uses 1 of your property reports · ${left} left${info?.monthly ? " this month" : ""}`
+        : "Uses 1 property report";
+  const outOfReports = !!user && left === 0;
+
+  return (
+    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl px-4 py-3", inline ? "bg-muted/50" : "glass")} data-testid="exact-rent">
+      <div className="min-w-0 flex-1">
+        <p className="title-4">
+          {area ? `Using the area rent: ${usd(estimate.rent)}/mo` : "No rent estimate for this home yet"}
+        </p>
+        <p className="caption-5 mt-0.5 text-pretty text-muted-foreground">
+          {failed
+            ? estimate.reason
+            : area
+              ? `Worked out from ${estimate.market_sample ?? "the"} rental listings for similar homes in ZIP ${zip ?? ""}. Get the exact rent for this address, with the comparable rentals behind it, to firm up every number.`
+              : "Get the rent estimate for this address, with the comparable rentals behind it."}
+        </p>
+      </div>
+      {failed ? (
+        outOfReports ? (
+          <Button asChild size="sm" variant="outline">
+            <Link href="/pricing">See plans</Link>
+          </Button>
+        ) : null
+      ) : !user ? (
+        <Button asChild size="sm">
+          <Link href={`/login?mode=register&next=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/")}`}>Create a free account</Link>
+        </Button>
+      ) : outOfReports ? (
+        <div className="flex flex-col items-end gap-1">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/pricing">Get more property reports</Link>
+          </Button>
+          <span className="caption-5 text-muted-foreground">No property reports left{info?.monthly ? " this month" : ""}</span>
+        </div>
+      ) : (
+        <div className="flex flex-col items-end gap-1">
+          <Button size="sm" onClick={onRequest} disabled={busy} data-testid="get-exact-rent">
+            {busy ? "Getting the exact rent…" : "Get the exact rent for this address"}
+          </Button>
+          <span className="caption-5 text-muted-foreground">{allowance}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -168,8 +249,12 @@ export default function PropertyPage() {
   const detail = useQuery({ queryKey: ["property", id], queryFn: () => api.property(id), retry: false });
   const ctx = detail.data?.context;
 
-  // Opening the analysis is a request for detail: fetch the property-level rent estimate.
-  const rent = useQuery({ queryKey: ["rent-estimate", id], queryFn: () => api.rentEstimate(id, true), enabled: !!ctx, staleTime: 5 * 60_000, retry: false });
+  // The search already priced this home with the ZIP's area rent. The exact estimate for the address is a
+  // paid request that uses one of the user's property reports, so it is only fetched when they ask for it
+  // (automatically in demo mode, where it costs nothing). A saved exact estimate is always shown.
+  const [wantRent, setWantRent] = React.useState(false);
+  const fetchRent = wantRent || !!isDemoMode;
+  const rent = useQuery({ queryKey: ["rent-estimate", id, fetchRent], queryFn: () => api.rentEstimate(id, fetchRent), enabled: !!ctx && !!status, staleTime: 5 * 60_000, retry: false, placeholderData: keepPreviousData });
   // Value estimates are premium calls: automatic in demo mode, on request with live providers.
   const [wantValue, setWantValue] = React.useState(false);
   const value = useQuery({ queryKey: ["value-estimate", id, wantValue || isDemoMode], queryFn: () => api.valueEstimate(id, wantValue || !!isDemoMode), enabled: !!ctx && !!status, staleTime: 5 * 60_000, retry: false });
@@ -179,6 +264,7 @@ export default function PropertyPage() {
   React.useEffect(() => {
     if (rent.data?.fetched_now || value.data?.fetched_now) {
       void client.invalidateQueries({ queryKey: ["property", id] });
+      void client.invalidateQueries({ queryKey: ["account"] }); // one more property report used
     }
   }, [estimateStamp, rent.data?.fetched_now, value.data?.fetched_now, client, id]);
 
@@ -377,6 +463,7 @@ export default function PropertyPage() {
             </Alert>
           ) : null}
           {analysis ? <HeadlineMetrics analysis={analysis} baseline={baseline} live={live} pending={pending} changed={changed} onReset={() => setOverrides({})} /> : <Skeleton className="h-56 w-full" />}
+          <ExactRentPrompt estimate={rent.data} zip={ctx.zip_code} requested={wantRent} busy={wantRent && rent.isFetching} onRequest={() => setWantRent(true)} />
 
           <Tabs value={tab} onValueChange={setTab}>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -509,10 +596,8 @@ export default function PropertyPage() {
                         </p>
                       ) : null}
                       {rent.data.level === "market_zip" ? (
-                        <div className="px-5">
-                          <Alert tone="warning">
-                            {rent.data.reason} Based on {rent.data.market_sample} rental listings in ZIP {ctx.zip_code}.
-                          </Alert>
+                        <div className="px-5 pb-5">
+                          <ExactRentPrompt estimate={rent.data} zip={ctx.zip_code} requested={wantRent} busy={wantRent && rent.isFetching} onRequest={() => setWantRent(true)} inline />
                         </div>
                       ) : (
                         <ComparablesTable comparables={rent.data.comparables} priceLabel="Rent" perMonth />
@@ -520,9 +605,13 @@ export default function PropertyPage() {
                     </>
                   ) : (
                     <div className="px-5 pb-5">
-                      <Alert tone="warning" title="Rent estimate unavailable">
-                        {rent.data?.reason ?? "No reliable estimate could be retrieved."} Enter a monthly rent in the deal simulator to model this property.
-                      </Alert>
+                      {rent.data?.can_request ? (
+                        <ExactRentPrompt estimate={rent.data} zip={ctx.zip_code} requested={wantRent} busy={wantRent && rent.isFetching} onRequest={() => setWantRent(true)} inline />
+                      ) : (
+                        <Alert tone="warning" title="Rent estimate unavailable">
+                          {rent.data?.reason ?? "No reliable estimate could be retrieved."} Enter a monthly rent in the deal simulator to model this property.
+                        </Alert>
+                      )}
                     </div>
                   )}
                 </CardContent>

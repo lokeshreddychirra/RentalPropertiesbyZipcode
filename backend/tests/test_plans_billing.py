@@ -109,6 +109,10 @@ async def test_property_reports_are_metered_and_cached_ones_are_free(app, client
     user, _ = await _new_user(app)
     anon = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     try:
+        # Opening a property (no fetch) shows the area rent and offers the exact one: no report is used.
+        opened = (await user.get(f"{API}/properties/{ids[0]}/rent-estimate")).json()
+        assert opened["level"] != "property" and opened["can_request"]
+        assert (await user.get(f"{API}/account")).json()["property_reports_used"] == 0
         guest = (await anon.get(f"{API}/properties/{ids[0]}/rent-estimate", params={"fetch": True})).json()
         assert guest["level"] != "property" and "free account" in guest["reason"]
         # Demo rent estimates are generated on request, so each first fetch is a "report".
