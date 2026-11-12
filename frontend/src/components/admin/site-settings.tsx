@@ -7,10 +7,10 @@ import { CheckCircle2, CircleDashed } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Skeleton, Table, Td, Th } from "@/components/ui/card";
-import { NumberInput, Switch } from "@/components/ui/form";
+import { Field, NumberInput, Select, Switch } from "@/components/ui/form";
 import { api, errorMessage } from "@/lib/api";
 import { useSession, useStatus } from "@/lib/store";
-import type { ProviderUsage } from "@/lib/types";
+import type { CacheSettings, ProviderUsage } from "@/lib/types";
 import { relativeTime } from "@/lib/utils";
 
 export function DataSourcesCard() {
@@ -54,10 +54,110 @@ export function DataSourcesCard() {
           </ol>
         </div>
         <p className="text-xs text-muted-foreground">
-          Cached data is reused for: listings {status.freshness.listing_cache_hours} h · rent estimates {status.freshness.rent_estimate_days} days · market
+          Cached data is reused for: listings {formatHours(status.freshness.listing_cache_hours)} · rent estimates {status.freshness.rent_estimate_days} days · market
           statistics {status.freshness.market_stats_days} days. Premium estimates are requested for the top {status.limits.rent_avm_top_n} candidates per search, or on
           demand from a property&apos;s analysis page.
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+const FRESH_HOURS = [6, 12, 24, 48, 72, 168, 336, 720];
+const STALE_DAYS = [0, 1, 3, 7, 14, 30];
+
+function formatHours(hours: number): string {
+  if (hours < 24 || hours % 24 !== 0) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  const days = hours / 24;
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+function formatDays(days: number): string {
+  return days === 0 ? "Off: always wait for fresh listings" : `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/** Administrators choose how long listings bought from the provider are reused. */
+export function CacheSettingsCard() {
+  const { user } = useSession();
+  const client = useQueryClient();
+  const { data: status } = useStatus();
+  const admin = user?.role === "admin";
+  const query = useQuery({ queryKey: ["cache-settings"], queryFn: api.cacheSettings, enabled: admin });
+  const [draft, setDraft] = React.useState<CacheSettings | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => {
+    if (query.data) setDraft({ listing_cache_hours: query.data.listing_cache_hours, listing_stale_days: query.data.listing_stale_days });
+  }, [query.data]);
+  if (!admin) return null;
+
+  const current = query.data;
+  const dirty = !!draft && !!current && (draft.listing_cache_hours !== current.listing_cache_hours || draft.listing_stale_days !== current.listing_stale_days);
+  const withCurrent = (values: number[], value: number | undefined) => (value === undefined || values.includes(value) ? values : [...values, value].sort((a, b) => a - b));
+  const save = async (body: CacheSettings) => {
+    setBusy(true);
+    try {
+      await api.updateCacheSettings(body);
+      toast.success("Listing cache updated");
+      await Promise.all([client.invalidateQueries({ queryKey: ["cache-settings"] }), client.invalidateQueries({ queryKey: ["status"] })]);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card id="listing-cache" className="scroll-mt-20">
+      <CardHeader>
+        <CardTitle>Listing cache</CardTitle>
+        <CardDescription>
+          Homes for sale bought from RentCast are shared by every user searching the same ZIP code. Longer periods mean fewer paid requests, but sold homes and old
+          prices stay visible for longer. Area rents are kept for {status?.freshness.market_stats_days ?? 30} days regardless.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!draft || !current ? (
+          <Skeleton className="h-28 w-full" />
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Listings stay fresh for" htmlFor="cache-fresh" hint={`Default ${formatHours(current.defaults.listing_cache_hours)}. Within this period a repeat search makes no RentCast request.`}>
+                <Select id="cache-fresh" value={draft.listing_cache_hours} onChange={(e) => setDraft({ ...draft, listing_cache_hours: Number(e.target.value) })}>
+                  {withCurrent(FRESH_HOURS, current.listing_cache_hours).map((hours) => (
+                    <option key={hours} value={hours}>
+                      {formatHours(hours)}
+                      {hours === current.defaults.listing_cache_hours ? " (default)" : ""}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field
+                label="Then show older listings instantly for"
+                htmlFor="cache-stale"
+                hint={`Default ${formatDays(current.defaults.listing_stale_days).toLowerCase()}. Results appear at once and fresh listings load in the background, once per ZIP code.`}
+              >
+                <Select id="cache-stale" value={draft.listing_stale_days} onChange={(e) => setDraft({ ...draft, listing_stale_days: Number(e.target.value) })}>
+                  {withCurrent(STALE_DAYS, current.listing_stale_days).map((days) => (
+                    <option key={days} value={days}>
+                      {formatDays(days)}
+                      {days === current.defaults.listing_stale_days ? " (default)" : ""}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {current.listing_cache_hours !== current.defaults.listing_cache_hours || current.listing_stale_days !== current.defaults.listing_stale_days ? (
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => save(current.defaults)}>
+                  Restore defaults
+                </Button>
+              ) : null}
+              <Button size="sm" disabled={!dirty || busy} onClick={() => save(draft)}>
+                {busy ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

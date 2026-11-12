@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookmarkPlus, ChevronLeft, ChevronRight, GitCompareArrows, Info, LayoutGrid, Lock, Map as MapIcon, RefreshCw, SearchX, Sparkles, Table2, X } from "@/components/ui/icons";
+import { ArrowUp, BookmarkPlus, ChevronLeft, ChevronRight, GitCompareArrows, Info, LayoutGrid, Lock, Map as MapIcon, RefreshCw, SearchX, Sparkles, Table2, X } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { MapView } from "@/components/map/map-view";
 import { ConfidenceBadge, DemoTag, ScoreRing } from "@/components/property/bits";
@@ -16,7 +16,7 @@ import { api, ApiError, errorMessage } from "@/lib/api";
 import { decodeFilters, describeFilters, SORT_OPTIONS } from "@/lib/filters";
 import { MAX_COMPARE, useApp, useSession } from "@/lib/store";
 import type { PropertyCard as CardData, SearchFilters, SearchJob, SortKey, StrategyFilter } from "@/lib/types";
-import { cn, pct, ratio, signTone, usd } from "@/lib/utils";
+import { cn, pct, ratio, relativeTime, signTone, usd } from "@/lib/utils";
 import { PropertyCard, viewOf } from "./property-card";
 import { SearchPanel } from "./search-panel";
 
@@ -29,6 +29,8 @@ const VIEWS: { value: View; label: string; hint: string; icon: React.ComponentTy
 /** Older links used "split" (map + list); that is now simply the map view. */
 const toView = (value: string | null, fallback: View): View => (value === "split" ? "map" : value === "list" || value === "map" || value === "table" ? value : fallback);
 const PAGE_SIZE = 24;
+/** Newer results replace the ones on screen automatically only this soon after the first appear. */
+const AUTO_UPDATE_MS = 2500;
 
 // ----------------------------------------------------------------------------- pieces
 
@@ -48,6 +50,57 @@ function Progress({ job }: { job: SearchJob | undefined }) {
         Listings in your ZIP code are screened against your filters, then every match is analysed for rent, cash flow and yield.
       </p>
     </Card>
+  );
+}
+
+/** Shown above results that are still growing (large ZIP codes) or being refreshed in the background. */
+function LiveStatus({ job, loadingMore, update, fresh, onUpdate }: { job: SearchJob; loadingMore: boolean; update: string | null; fresh: boolean; onUpdate: () => void }) {
+  if (!loadingMore && !job.refreshing && !update) return null;
+  return (
+    <div className="glass flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl px-4 py-3" role="status" aria-live="polite" data-testid="live-status">
+      {loadingMore || job.refreshing ? (
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <RefreshCw className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
+          <p className="min-w-0 text-sm">
+            {loadingMore ? (
+              <>
+                <span className="font-medium">Analysing more homes</span>
+                <span className="text-muted-foreground">
+                  {" · "}
+                  {(job.progress?.listings_found ?? 0).toLocaleString()} found so far. The ranking may change as the rest load.
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="font-medium">Checking for new listings</span>
+                <span className="text-muted-foreground">
+                  {" · "}
+                  These results use listings from {relativeTime(job.data_as_of)}. Fresh ones are loading in the background.
+                </span>
+              </>
+            )}
+          </p>
+        </div>
+      ) : (
+        <p className="min-w-0 flex-1 text-sm">
+          {fresh ? (
+            <span className="font-medium">Fresh listings are ready</span>
+          ) : (
+            <>
+              <span className="font-medium">Finished</span>
+              <span className="text-muted-foreground">
+                {" · "}All {(job.result_count ?? 0).toLocaleString()} matching homes analysed.
+              </span>
+            </>
+          )}
+        </p>
+      )}
+      {update ? (
+        <Button size="sm" onClick={onUpdate} data-testid="show-update">
+          <ArrowUp /> {update}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -408,29 +461,77 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
     queryFn: () => api.job(jobId as string),
     enabled: !!jobId,
     initialData: start.data,
-    refetchInterval: (query) => (query.state.data && ["completed", "failed"].includes(query.state.data.status) ? false : 600),
+    // Poll quickly while the search runs, slower while fresh listings load in the background.
+    refetchInterval: (query) => {
+      const current = query.state.data;
+      if (!current || !["completed", "failed"].includes(current.status)) return 600;
+      return current.status === "completed" && current.refreshing ? 1500 : false;
+    },
     retry: false,
   });
   const job = jobQuery.data;
-  const done = job?.status === "completed";
+  const finished = job?.status === "completed";
+  // Results can be read as soon as the job has published some, even while later pages still load.
+  const latestVersion = job && job.status !== "failed" ? job.results_version || (finished ? 1 : 0) : 0;
+  const ready = latestVersion > 0;
+  const loadingMore = ready && !finished;
+
+  // The version on screen. Newer versions replace it automatically only when that would not move the
+  // cards someone is reading; otherwise an "update" button offers them.
+  const [shown, setShown] = React.useState<{ job: string; version: number; at: number } | null>(null);
+  const shownVersion = shown && shown.job === jobId ? shown.version : 0;
+  // The version current when the search finished: anything newer comes from the background refresh.
+  const [finishedVersion, setFinishedVersion] = React.useState<{ job: string; version: number } | null>(null);
+  React.useEffect(() => {
+    if (finished && jobId && finishedVersion?.job !== jobId) setFinishedVersion({ job: jobId, version: latestVersion });
+  }, [finished, jobId, latestVersion, finishedVersion]);
+  React.useEffect(() => {
+    if (jobId && latestVersion > 0 && shownVersion === 0) setShown({ job: jobId, version: latestVersion, at: Date.now() });
+  }, [jobId, latestVersion, shownVersion]);
 
   const polygonParam = area?.length ? area.map(([lng, lat]) => `${lng.toFixed(6)},${lat.toFixed(6)}`).join(";") : null;
   const activeBbox = followMap && view === "map" ? bbox : null;
 
-  const results = useQuery({
-    queryKey: ["search-results", jobId, sort, page, activeBbox, polygonParam],
+  const resultsFor = (version: number) => ({
+    queryKey: ["search-results", jobId, version, sort, page, activeBbox, polygonParam],
     queryFn: () => api.results(jobId as string, { sort, page, page_size: PAGE_SIZE, bbox: activeBbox, polygon: polygonParam }),
-    enabled: !!jobId && done,
+    retry: false,
+    staleTime: Infinity,
+  });
+  const results = useQuery({ ...resultsFor(shownVersion), enabled: !!jobId && shownVersion > 0, placeholderData: keepPreviousData });
+  const latest = useQuery({ ...resultsFor(latestVersion), enabled: !!jobId && shownVersion > 0 && latestVersion > shownVersion });
+  const mapQuery = useQuery({
+    queryKey: ["search-map", jobId, shownVersion],
+    queryFn: () => api.mapPoints(jobId as string),
+    enabled: !!jobId && shownVersion > 0 && view === "map",
+    staleTime: Infinity,
     placeholderData: keepPreviousData,
     retry: false,
   });
-  const mapQuery = useQuery({
-    queryKey: ["search-map", jobId],
-    queryFn: () => api.mapPoints(jobId as string),
-    enabled: !!jobId && done && view === "map",
-    staleTime: Infinity,
-    retry: false,
-  });
+
+  // Compare the newer results with the cards on screen.
+  const shownIds = results.data?.items.map((item) => item.id) ?? [];
+  const latestIds = latest.data?.items.map((item) => item.id) ?? null;
+  const newcomers = latestIds ? latestIds.filter((id) => !shownIds.includes(id)).length : 0;
+  const unchanged = !!latestIds && results.data?.page === latest.data?.page && latestIds.join() === shownIds.join();
+  const pendingUpdate = latestVersion > shownVersion && shownVersion > 0 && !!latest.data && !unchanged;
+  const showLatest = React.useCallback(() => {
+    if (jobId) setShown((prev) => ({ job: jobId, version: latestVersion, at: prev?.job === jobId ? prev.at : Date.now() }));
+  }, [jobId, latestVersion]);
+  React.useEffect(() => {
+    if (!latest.data || latestVersion <= shownVersion || !shown) return;
+    if (unchanged || Date.now() - shown.at < AUTO_UPDATE_MS) showLatest();
+  }, [latest.data, latestVersion, shownVersion, shown, unchanged, showLatest]);
+  const refreshedUpdate = !!finishedVersion && finishedVersion.job === jobId && latestVersion > finishedVersion.version;
+  const updateLabel = !pendingUpdate
+    ? null
+    : refreshedUpdate
+      ? "Show fresh listings"
+      : newcomers > 0
+        ? sort === "score"
+          ? `${newcomers} better ${newcomers === 1 ? "match" : "matches"} found · show updated ranking`
+          : `${newcomers} new ${newcomers === 1 ? "home" : "homes"} found · show`
+        : "Show updated ranking";
 
   // Cached results expire server-side; transparently re-run when that happens.
   const expired = (results.error instanceof ApiError && results.error.status === 404) || (jobQuery.error instanceof ApiError && jobQuery.error.status === 404);
@@ -439,6 +540,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
   }, [expired]);
 
   const running = !!filters && !!user && (start.isLoading || (!!job && !["completed", "failed"].includes(job.status)));
+  const waiting = running && !ready; // nothing to show yet
   const planLimit = start.error instanceof ApiError && start.error.status === 402 ? start.error.message : null;
   const needsAccount = !!filters && !sessionLoading && !user;
   const data = results.data;
@@ -523,7 +625,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
           {startError}
         </Alert>
       ) : null}
-      {running ? (
+      {waiting ? (
         <>
           <Progress job={job} />
           <CardSkeletons count={3} />
@@ -538,22 +640,24 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
         </Alert>
       ) : null}
 
-      {done && job ? (
+      {ready && job ? (
         <section aria-label="Search results" className="space-y-4">
-          <JobNotices job={job} />
+          {finished ? <JobNotices job={job} /> : null}
+          <LiveStatus job={job} loadingMore={loadingMore} update={updateLabel} fresh={refreshedUpdate} onUpdate={showLatest} />
 
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="heading-5" data-testid="result-count">
-                {data ? `${data.total.toLocaleString()} ${data.total === 1 ? "property" : "properties"}` : "Loading results…"}
+                {data ? `${data.total.toLocaleString()} ${data.total === 1 ? "property" : "properties"}${loadingMore || (pendingUpdate && !refreshedUpdate) ? " so far" : ""}` : "Loading results…"}
               </h2>
               <p className="caption-5 text-muted-foreground">
                 Ranked by calculated returns
+                {finished && !job.refreshing && latestVersion === shownVersion && job.data_as_of && job.data_mode !== "demo" ? ` · listings as of ${relativeTime(job.data_as_of)}` : ""}
                 {isAdmin ? (
                   <>
                     {" · Admin: "}
                     {data ? `${data.summary.total.toLocaleString()} of ` : ""}
-                    {job.listings_fetched?.toLocaleString() ?? 0} listings matched
+                    {(finished ? (job.listings_fetched ?? 0) : (job.progress?.listings_found ?? 0)).toLocaleString()} listings matched
                     {" · "}
                     <button
                       type="button"

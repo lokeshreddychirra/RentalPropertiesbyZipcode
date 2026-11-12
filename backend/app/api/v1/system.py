@@ -22,7 +22,9 @@ from app.providers.demo import demo_markets_summary
 from app.providers.registry import get_providers
 from app.providers.usage import PROVIDER_SPECS, get_usage_tracker
 from app.schemas.search import SORT_LABELS
+from app.services import runtime_settings
 from app.services.property_store import normalize_jurisdiction
+from app.services.runtime_settings import CacheSettings
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -55,6 +57,7 @@ async def status() -> SystemStatus:
     """What data the app is running on. The UI uses this to label demo data prominently."""
     s = get_settings()
     providers = get_providers()
+    cache = await runtime_settings.cache_settings()
     demo = providers.is_demo
     return SystemStatus(
         data_mode="demo" if demo else "live",
@@ -76,7 +79,8 @@ async def status() -> SystemStatus:
         str_provider_enabled=providers.short_term is not None,
         registration_enabled=s.allow_registration,
         freshness={
-            "listing_cache_hours": round(s.listing_cache_ttl_seconds / 3600, 1),
+            "listing_cache_hours": cache.listing_cache_hours,
+            "listing_stale_days": cache.listing_stale_days,
             "rent_estimate_days": s.rent_estimate_ttl_days,
             "value_estimate_days": s.value_estimate_ttl_days,
             "str_estimate_days": s.str_estimate_ttl_days,
@@ -229,6 +233,27 @@ async def update_budget(provider_key: str, body: BudgetUpdate, _: AdminUser, ses
         request_budget_used_pct=round(requests / row.monthly_request_limit * 100, 1) if row.monthly_request_limit else None,
         cost_budget_used_pct=round(float(cost / row.monthly_cost_limit_usd * 100), 1) if row.monthly_cost_limit_usd else None,
     )
+
+
+class CacheSettingsOut(CacheSettings):
+    defaults: CacheSettings
+
+
+@router.get("/cache-settings", response_model=CacheSettingsOut)
+async def get_cache_settings(_: AdminUser) -> CacheSettingsOut:
+    """How long provider listings are reused (administrators only)."""
+    current = await runtime_settings.cache_settings()
+    return CacheSettingsOut(**current.model_dump(), defaults=runtime_settings.default_cache_settings())
+
+
+@router.put("/cache-settings", response_model=CacheSettingsOut)
+async def update_cache_settings(body: CacheSettings, _: AdminUser) -> CacheSettingsOut:
+    """Change how long listings count as fresh and how long older copies are shown while refreshing.
+
+    Applies to listings already in the cache too: freshness is worked out from when each page was fetched.
+    """
+    current = await runtime_settings.save_cache_settings(body)
+    return CacheSettingsOut(**current.model_dump(), defaults=runtime_settings.default_cache_settings())
 
 
 # --------------------------------------------------------------------------- STR regulation registry

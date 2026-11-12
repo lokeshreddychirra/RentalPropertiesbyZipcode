@@ -68,7 +68,7 @@ def test_rentcast_listing_parsing_and_price_history():
 
 
 def make_rentcast(handler, **settings) -> RentCastProvider:
-    cfg = Settings(rentcast_api_key="test-key", rentcast_page_size=500, rentcast_requests_per_second=1000, **settings)
+    cfg = Settings(**{"rentcast_api_key": "test-key", "rentcast_page_size": 500, "rentcast_requests_per_second": 1000, **settings})
     return RentCastProvider(cfg, transport=httpx.MockTransport(handler))
 
 
@@ -363,14 +363,14 @@ async def test_listing_pages_are_cached_in_postgres_and_survive_a_redis_flush(ap
             return ListingPage(listings=[parse_listing(rentcast_listing(1))], has_more=False, next_offset=0)
 
     provider, query = StubProvider(), ListingQuery(zip_code="30269")
-    first = await _cached_page(provider, query, 0, refresh=False)
+    first = await _cached_page(provider, query, 0)
     await get_redis().flushdb()  # a Redis restart or eviction must not cause a repeat paid request
-    second = await _cached_page(provider, ListingQuery(zip_code="30269", min_price=1), 0, refresh=False)
-    assert calls == [0] and second == first
-    await _cached_page(provider, query, 0, refresh=True)
+    second = await _cached_page(provider, ListingQuery(zip_code="30269", min_price=1), 0)
+    assert calls == [0] and second.page == first.page and not second.stale
+    await _cached_page(provider, query, 0, mode="refresh")
     assert calls == [0, 0]
 
-    await response_cache.set_json("listings:expired-test", {"a": 1}, ttl_seconds=1)
+    await response_cache.set_json("listings:expired-test", {"a": 1}, keep_seconds=60)
     assert await response_cache.get_json("listings:expired-test") == {"a": 1}
 
     from sqlalchemy import update
@@ -383,77 +383,203 @@ async def test_listing_pages_are_cached_in_postgres_and_survive_a_redis_flush(ap
     assert await response_cache.get_json("listings:expired-test") is None
 
 
-async def test_repeat_zip_search_within_a_day_makes_no_rentcast_requests(app, monkeypatch):
-    """Searching a ZIP again later the same day (any user, search-result cache gone) costs nothing.
-
-    Listing pages are reused for LISTING_CACHE_TTL_SECONDS (24 h) and rent statistics for
-    MARKET_STATS_TTL_DAYS (30 days). After 24 h only the sale listings are fetched again.
-    """
-    import random
-    from datetime import timedelta
-
-    from sqlalchemy import select, update
-
-    from app.core.config import get_settings
-    from app.core.db import session_scope
-    from app.core.redis import get_redis
-    from app.models.tables import MarketSnapshot, ProviderResponseCache
-    from app.services import search as search_service
-
-    monkeypatch.setattr(get_settings(), "rent_avm_top_n", 0)
-    zip_code = str(random.randint(10000, 19999))
-    calls: dict[str, int] = {}
+def zip_handler(zip_code: str, calls: dict[str, int], *, sale_pages: int = 1, page_size: int = 500):
+    """A fake RentCast for one ZIP: ``sale_pages`` full pages of homes for sale and 30 rentals."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/v1")
         calls[path] = calls.get(path, 0) + 1
         if path == "/listings/sale":
-            return httpx.Response(200, json=[rentcast_listing(i, id=f"{i}-{zip_code}", formattedAddress=f"{i} Oak St, Town, GA {zip_code}", zipCode=zip_code) for i in range(5)])
+            offset = int(request.url.params.get("offset", 0))
+            page = offset // page_size
+            count = page_size if page < sale_pages - 1 else max(page_size // 2, 1)
+            if page >= sale_pages:
+                count = 0
+            homes = [offset + i for i in range(count)]
+            return httpx.Response(200, json=[rentcast_listing(n, id=f"{n}-{zip_code}", formattedAddress=f"{n} Oak St, Town, GA {zip_code}", zipCode=zip_code) for n in homes])
         if path == "/listings/rental/long-term":
-            return httpx.Response(200, json=[rentcast_listing(300 + i, id=f"r{i}-{zip_code}", formattedAddress=f"{300 + i} Elm St, Town, GA {zip_code}", zipCode=zip_code, price=1600 + 25 * i) for i in range(30)])
+            return httpx.Response(200, json=[rentcast_listing(9000 + i, id=f"r{i}-{zip_code}", formattedAddress=f"{9000 + i} Elm St, Town, GA {zip_code}", zipCode=zip_code, price=1600 + 25 * i) for i in range(30)])
         return httpx.Response(404, json={})
 
-    provider = make_rentcast(handler)
+    return handler
+
+
+async def _age_listing_cache(keys: set[str], zip_code: str, hours: float) -> None:
+    """Pretend ``hours`` have passed for the listing pages in ``keys`` and the ZIP's rent statistics."""
+    from datetime import timedelta
+
+    from sqlalchemy import update
+
+    from app.core.db import session_scope
+    from app.models.tables import MarketSnapshot, ProviderResponseCache
+
+    async with session_scope() as session:
+        await session.execute(update(ProviderResponseCache).where(ProviderResponseCache.key.in_(keys)).values(fetched_at=ProviderResponseCache.fetched_at - timedelta(hours=hours)))
+        await session.execute(update(MarketSnapshot).where(MarketSnapshot.zip_code == zip_code).values(fetched_at=MarketSnapshot.fetched_at - timedelta(hours=hours)))
+
+
+async def _cache_keys() -> set[str]:
+    from sqlalchemy import select
+
+    from app.core.db import session_scope
+    from app.models.tables import ProviderResponseCache
+
+    async with session_scope() as session:
+        return set((await session.execute(select(ProviderResponseCache.key))).scalars())
+
+
+async def _quiet(_: JobProgress) -> None:
+    return None
+
+
+async def test_repeat_zip_search_within_a_day_makes_no_rentcast_requests(app, monkeypatch):
+    """Searching a ZIP again later the same day (any user, search-result cache gone) costs nothing.
+
+    Listing pages are fresh for a day (the admin setting) and rent statistics for MARKET_STATS_TTL_DAYS.
+    After a day, the older copy is still shown instantly and only the background refresh re-buys
+    the sale listings.
+    """
+    import random
+
+    from app.core.config import get_settings
+    from app.core.redis import get_redis
+    from app.services import search as search_service
+
+    monkeypatch.setattr(get_settings(), "rent_avm_top_n", 0)
+    zip_code = str(random.randint(10000, 19999))
+    calls: dict[str, int] = {}
+    provider = make_rentcast(zip_handler(zip_code, calls))
     providers = ProviderSet(mode="live", listing_providers=[provider], market=provider, rent=provider)
+    request = SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code]))
 
-    async def progress(_: JobProgress) -> None:
-        return None
-
-    async def search() -> int:
+    async def search(mode=None):
         before = sum(calls.values())
-        outcome = await execute_search(SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code])), progress, providers)
+        outcome = await execute_search(request, _quiet, providers, listing_mode=mode)
         assert outcome.cards and all(c.long_term.available for c in outcome.cards)
-        return sum(calls.values()) - before
+        return sum(calls.values()) - before, outcome
 
-    async def age_cache(hours: int) -> None:
-        """Pretend ``hours`` have passed for everything this search stored."""
-        async with session_scope() as session:
-            await session.execute(update(ProviderResponseCache).where(ProviderResponseCache.key.in_(new_keys)).values(expires_at=ProviderResponseCache.expires_at - timedelta(hours=hours)))
-            await session.execute(update(MarketSnapshot).where(MarketSnapshot.zip_code == zip_code).values(fetched_at=MarketSnapshot.fetched_at - timedelta(hours=hours)))
-
-    async with session_scope() as session:
-        existing = set((await session.execute(select(ProviderResponseCache.key))).scalars())
-
-    # First search of the day: one sale-listings page and one rental-listings page.
-    assert await search() == 2
-    assert calls == {"/listings/sale": 1, "/listings/rental/long-term": 1}
-    async with session_scope() as session:
-        new_keys = set((await session.execute(select(ProviderResponseCache.key))).scalars()) - existing
+    existing = await _cache_keys()
+    # First search of the day: one sale-listings page and one rental-listings page, fetched side by side.
+    cost, first = await search()
+    assert cost == 2 and calls == {"/listings/sale": 1, "/listings/rental/long-term": 1} and not first.stale_keys
+    new_keys = await _cache_keys() - existing
     assert len(new_keys) == 2
 
     # Another user, an hour later: the 1-hour search-result cache in Redis is gone, Postgres still serves it.
     await get_redis().flushdb()
-    assert await search() == 0
-    job, needs_run = await search_service.create_job(SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code])))
+    assert (await search())[0] == 0
+    _, needs_run = await search_service.create_job(request)
     assert needs_run  # no Redis shortcut: the run above really went through the Postgres cache
 
-    # 23 hours after the first search: still zero RentCast requests.
-    await age_cache(23)
-    assert await search() == 0
+    # 23 hours after the first search: still zero RentCast requests, nothing stale.
+    await _age_listing_cache(new_keys, zip_code, 23)
+    cost, outcome = await search()
+    assert cost == 0 and not outcome.stale_keys
 
-    # 25 hours: listings are re-fetched once (new homes, price cuts); rents are still fresh (30 days).
-    await age_cache(2)
-    assert await search() == 1
-    assert calls == {"/listings/sale": 2, "/listings/rental/long-term": 1}
-    assert await search() == 0  # and the refreshed page is cached again
+    # 25 hours: the older listings are shown at once (no request) and flagged for a background refresh…
+    await _age_listing_cache(new_keys, zip_code, 2)
+    cost, outcome = await search()
+    assert cost == 0 and len(outcome.stale_keys) == 1
+    assert outcome.data_as_of is not None and (datetime.now(UTC) - outcome.data_as_of).total_seconds() > 24 * 3600
+    # …which re-buys only the sale listings: rents are still fresh (30 days).
+    cost, _ = await search("revalidate")
+    assert cost == 1 and calls == {"/listings/sale": 2, "/listings/rental/long-term": 1}
+    cost, outcome = await search()
+    assert cost == 0 and not outcome.stale_keys
+
+    # Past the serve-while-refreshing window (1 day fresh + 7 days), people wait for fresh listings.
+    await _age_listing_cache(new_keys, zip_code, 24 * 9)
+    cost, outcome = await search()
+    assert cost == 1 and not outcome.stale_keys
     await provider.aclose()
+
+
+async def test_stale_results_are_refreshed_in_the_background_once_per_area(app, monkeypatch):
+    """Two people open the same stale ZIP: both see results at once, and RentCast is called once."""
+    import asyncio
+    import random
+
+    from app.core.config import get_settings
+    from app.services import search as search_service
+
+    monkeypatch.setattr(get_settings(), "rent_avm_top_n", 0)
+    zip_code = str(random.randint(20000, 29999))
+    calls: dict[str, int] = {}
+    provider = make_rentcast(zip_handler(zip_code, calls))
+    providers = ProviderSet(mode="live", listing_providers=[provider], market=provider, rent=provider)
+    monkeypatch.setattr(search_service, "get_providers", lambda: providers)
+
+    existing = await _cache_keys()
+    await execute_search(SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code])), _quiet, providers)
+    await _age_listing_cache(await _cache_keys() - existing, zip_code, 30)
+    sale_calls = calls["/listings/sale"]
+
+    # Different filters, same ZIP: they share the cached listing pages and therefore one refresh.
+    jobs = []
+    for request in (SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code])), SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code], min_beds=3))):
+        job, needs_run = await search_service.create_job(request)
+        assert needs_run
+        jobs.append(job.id)
+    await asyncio.gather(*(search_service.run_search_job(job_id) for job_id in jobs))
+
+    assert calls["/listings/sale"] == sale_calls + 1  # one paid refresh for both searches
+    for job_id in jobs:
+        job = await search_service.load_job(job_id)
+        assert job.status == "completed" and not job.refreshing
+        assert job.results_version >= 2  # the stale results, then the refreshed ones
+        assert (datetime.now(UTC) - job.data_as_of).total_seconds() < 600
+        assert await search_service.load_cards(job_id)
+    await provider.aclose()
+
+
+async def test_large_areas_publish_results_while_later_pages_load(app, monkeypatch):
+    """A ZIP with several pages of listings shows the first page's homes before the rest arrive."""
+    import random
+
+    from app.core.config import get_settings
+    from app.services import search as search_service
+
+    monkeypatch.setattr(get_settings(), "rent_avm_top_n", 0)
+    monkeypatch.setattr(search_service, "PUBLISH_INTERVAL_SECONDS", 0)
+    zip_code = str(random.randint(30000, 39999))
+    calls: dict[str, int] = {}
+    provider = make_rentcast(zip_handler(zip_code, calls, sale_pages=3, page_size=50), rentcast_page_size=50)
+    providers = ProviderSet(mode="live", listing_providers=[provider], market=provider, rent=provider)
+    previews: list[int] = []
+
+    async def publish(cards):
+        previews.append(len(cards))
+
+    outcome = await execute_search(SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code])), _quiet, providers, publish=publish)
+    assert calls["/listings/sale"] == 3
+    assert previews == [50, 100, 125]  # one preview per page, growing
+    assert len(outcome.cards) == 125 and all(c.long_term.available for c in outcome.cards)
+    assert calls["/listings/rental/long-term"] == 1  # rents loaded once, not once per page
+    await provider.aclose()
+
+
+async def test_admin_can_change_how_long_listings_stay_fresh(app, client, anon_client):
+    """The listing cache period is an admin setting (default 1 day) and applies to pages already cached."""
+    from datetime import timedelta
+
+    from app.services import response_cache, runtime_settings
+
+    assert (await anon_client.get(f"{API}/system/cache-settings")).status_code == 401
+    assert (await anon_client.put(f"{API}/system/cache-settings", json={"listing_cache_hours": 1, "listing_stale_days": 0})).status_code == 401
+    current = (await client.get(f"{API}/system/cache-settings")).json()
+    assert current["defaults"] == {"listing_cache_hours": 24.0, "listing_stale_days": 7.0}
+    assert current["listing_cache_hours"] == 24.0
+
+    await response_cache.set_json("listings:fresh-setting-test", {"a": 1})
+    await _age_listing_cache({"listings:fresh-setting-test"}, "00000", 30)
+    assert await response_cache.get_json("listings:fresh-setting-test") is None  # 30 h old: stale at 24 h
+
+    saved = await client.put(f"{API}/system/cache-settings", json={"listing_cache_hours": 48, "listing_stale_days": 3})
+    assert saved.status_code == 200 and saved.json()["listing_cache_hours"] == 48
+    assert await response_cache.get_json("listings:fresh-setting-test") == {"a": 1}  # fresh again at 48 h
+    status = (await client.get(f"{API}/system/status")).json()
+    assert status["freshness"]["listing_cache_hours"] == 48 and status["freshness"]["listing_stale_days"] == 3
+    assert (await client.put(f"{API}/system/cache-settings", json={"listing_cache_hours": 0, "listing_stale_days": 3})).status_code == 422
+
+    await client.put(f"{API}/system/cache-settings", json={"listing_cache_hours": 24, "listing_stale_days": 7})
+    assert await runtime_settings.listing_keep_seconds() == timedelta(days=8).total_seconds()

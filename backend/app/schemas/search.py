@@ -234,6 +234,9 @@ class SearchJob(BaseModel):
     created_at: datetime
     finished_at: datetime | None = None
     filters: SearchFilters
+    results_version: int = Field(default=0, description="Increases each time results are published; above 0, results can be read even while the search is still running")
+    refreshing: bool = Field(default=False, description="Results came from older cached listings and fresh ones are loading in the background")
+    data_as_of: datetime | None = Field(default=None, description="When the oldest listing data in these results was fetched from the provider")
 
 
 class ResultSummary(BaseModel):

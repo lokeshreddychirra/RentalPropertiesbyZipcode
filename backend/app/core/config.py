@@ -105,7 +105,10 @@ class Settings(BaseSettings):
     stripe_api_base: str = "https://api.stripe.com/v1"
 
     # --- Freshness thresholds (how long cached provider data is reused) -----
-    listing_cache_ttl_seconds: int = 24 * 3600
+    listing_cache_ttl_seconds: int = 24 * 3600  # default; administrators can change it in the admin portal
+    # After that, cached listings are still shown instantly for up to this many days while a fresh copy
+    # is fetched in the background (0 = always wait for fresh listings). Also changeable in the admin portal.
+    listing_stale_days: int = 7
     rent_estimate_ttl_days: int = 30
     value_estimate_ttl_days: int = 30
     str_estimate_ttl_days: int = 30

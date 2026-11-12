@@ -83,8 +83,8 @@ async def get_results(
     job = await search_service.load_job(job_id)
     if job is None:
         raise NotFoundError("Search job not found or expired — run the search again")
-    if job.status != "completed":
-        raise AppError("The search has not finished yet", code="search_not_ready", status_code=409, details={"status": job.status})
+    if job.status == "failed" or (job.status != "completed" and job.results_version == 0):
+        raise AppError("The search has no results yet", code="search_not_ready", status_code=409, details={"status": job.status})
     cards = await search_service.load_cards(job_id)
     if cards is None:
         raise NotFoundError("Search results have expired — run the search again")
@@ -93,9 +93,12 @@ async def get_results(
 
 @router.get("/jobs/{job_id}/map", response_model=MapResults)
 async def get_map_points(job_id: str) -> MapResults:
-    """Lightweight coordinates + headline metrics for every matching property (for map rendering)."""
+    """Lightweight coordinates + headline metrics for every matching property (for map rendering).
+
+    Available as soon as the job has published results (``results_version`` > 0), even while it still runs.
+    """
     job = await search_service.load_job(job_id)
-    if job is None or job.status != "completed":
+    if job is None or job.status == "failed" or (job.status != "completed" and job.results_version == 0):
         raise NotFoundError("Search results are not available — run the search again")
     cards = await search_service.load_cards(job_id)
     if cards is None:

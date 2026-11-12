@@ -119,7 +119,9 @@ have one:
 | Mechanism | Detail |
 |---|---|
 | Staged retrieval | Listings (paginated) → free local filters → one `/markets` call per ZIP for conservative area rents → property-level AVM only for the top `RENT_AVM_TOP_N` candidates (re-checked for `RENT_AVM_MAX_ROUNDS` rounds) → STR estimates only for the top `STR_ESTIMATE_TOP_N` or on demand |
-| Caching | Listing and rental-listing pages in PostgreSQL (`provider_response_cache`, `LISTING_CACHE_TTL_SECONDS`), shared by every user and safe from Redis restarts; estimates and market stats in PostgreSQL with freshness thresholds (`*_TTL_DAYS`), identical searches served from cache |
+| Caching | Listing and rental-listing pages in PostgreSQL (`provider_response_cache`), shared by every user and safe from Redis restarts. Listings are fresh for 1 day by default; an administrator changes that under **Admin Portal → Listing cache** (`LISTING_CACHE_TTL_SECONDS` is only the default). Estimates and market stats are kept in PostgreSQL with freshness thresholds (`*_TTL_DAYS`); identical searches are served from cache |
+| Serve while refreshing | For `LISTING_STALE_DAYS` (default 7, also in the admin portal) after listings go stale, a search shows the older copy at once and fetches fresh listings in the background. A Redis lock makes sure each area is refreshed once, however many people search it at the same time; the results on screen are then swapped for the fresh ones |
+| Progressive results | Each page of listings (500 homes) is analysed as soon as it arrives and published to the job, so large ZIP codes show their first homes while later pages load. The next page is requested while the current one is analysed |
 | Budgets | Monthly request and cost limits per provider, enforced before every call |
 | Disclosure | Hitting a budget, rate limit, provider error or `MAX_LISTINGS_PER_SEARCH` marks the search **partial** with the reason shown to the user |
 | Accounting | Every call is recorded (`provider_api_usage`); Settings shows requests, errors and estimated cost |

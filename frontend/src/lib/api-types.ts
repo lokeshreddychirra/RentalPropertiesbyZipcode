@@ -442,6 +442,8 @@ export interface paths {
         /**
          * Get Map Points
          * @description Lightweight coordinates + headline metrics for every matching property (for map rendering).
+         *
+         *     Available as soon as the job has published results (``results_version`` > 0), even while it still runs.
          */
         get: operations["get_map_points_api_v1_searches_jobs__job_id__map_get"];
         put?: never;
@@ -955,6 +957,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/cache-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cache Settings
+         * @description How long provider listings are reused (administrators only).
+         */
+        get: operations["get_cache_settings_api_v1_system_cache_settings_get"];
+        /**
+         * Update Cache Settings
+         * @description Change how long listings count as fresh and how long older copies are shown while refreshing.
+         *
+         *     Applies to listings already in the cache too: freshness is worked out from when each page was fetched.
+         */
+        put: operations["update_cache_settings_api_v1_system_cache_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/str-regulations": {
         parameters: {
             query?: never;
@@ -1053,7 +1081,7 @@ export interface components {
             cash_flow: string;
             /**
              * Strategy Comparison
-             * @description Long-term versus short-term rental comparison, including legal status
+             * @description One or two sentences on the long-term rental outlook: rent coverage of costs and what would improve returns
              */
             strategy_comparison: string;
             /**
@@ -1068,7 +1096,7 @@ export interface components {
             risks: string[];
             /**
              * Sensitivity
-             * @description Sensitivity to mortgage rate and vacancy/occupancy using the provided stress figures
+             * @description Sensitivity to mortgage rate and vacancy using the provided stress figures
              */
             sensitivity: string;
             /**
@@ -1417,6 +1445,33 @@ export interface components {
             monthly_cost_limit_usd?: number | string | null;
             /** Cost Per Request Usd */
             cost_per_request_usd?: number | string | null;
+        };
+        /** CacheSettings */
+        CacheSettings: {
+            /**
+             * Listing Cache Hours
+             * @description How long listings from the provider count as fresh
+             */
+            listing_cache_hours: number;
+            /**
+             * Listing Stale Days
+             * @description After that, how many more days cached listings are shown instantly while a fresh copy loads in the background (0 = off)
+             */
+            listing_stale_days: number;
+        };
+        /** CacheSettingsOut */
+        CacheSettingsOut: {
+            /**
+             * Listing Cache Hours
+             * @description How long listings from the provider count as fresh
+             */
+            listing_cache_hours: number;
+            /**
+             * Listing Stale Days
+             * @description After that, how many more days cached listings are shown instantly while a fresh copy loads in the background (0 = off)
+             */
+            listing_stale_days: number;
+            defaults: components["schemas"]["CacheSettings"];
         };
         /** CapitalImprovement */
         "CapitalImprovement-Input": {
@@ -2482,8 +2537,11 @@ export interface components {
              * @description Paid property reports per period; null = unlimited
              */
             property_reports?: number | null;
-            /** Zips Per Search */
-            zips_per_search: number;
+            /**
+             * Zips Per Search
+             * @description Ignored: every search covers exactly one ZIP code
+             */
+            zips_per_search?: number | null;
         };
         /** PlansOut */
         PlansOut: {
@@ -3420,7 +3478,7 @@ export interface components {
             max_year_built?: number | null;
             /**
              * Strategy
-             * @default both
+             * @default ltr
              * @enum {string}
              */
             strategy: "ltr" | "str" | "both";
@@ -3487,7 +3545,7 @@ export interface components {
             max_year_built?: number | null;
             /**
              * Strategy
-             * @default both
+             * @default ltr
              * @enum {string}
              */
             strategy: "ltr" | "str" | "both";
@@ -3541,6 +3599,23 @@ export interface components {
             /** Finished At */
             finished_at?: string | null;
             filters: components["schemas"]["SearchFilters-Output"];
+            /**
+             * Results Version
+             * @description Increases each time results are published; above 0, results can be read even while the search is still running
+             * @default 0
+             */
+            results_version: number;
+            /**
+             * Refreshing
+             * @description Results came from older cached listings and fresh ones are loading in the background
+             * @default false
+             */
+            refreshing: boolean;
+            /**
+             * Data As Of
+             * @description When the oldest listing data in these results was fetched from the provider
+             */
+            data_as_of?: string | null;
         };
         /** SearchResults */
         SearchResults: {
@@ -5879,6 +5954,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderUsage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cache_settings_api_v1_system_cache_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CacheSettingsOut"];
+                };
+            };
+        };
+    };
+    update_cache_settings_api_v1_system_cache_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CacheSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CacheSettingsOut"];
                 };
             };
             /** @description Validation Error */

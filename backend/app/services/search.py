@@ -8,6 +8,11 @@
     6. upgrade    paid property-level rent / STR estimates only for the most promising candidates
     7. rank       deterministic analysis + investment score for every remaining property
 
+Steps 3–5 and the first ranking run for each page of listings as it arrives, and the job publishes
+the cards so far, so large areas show results before their last page is in. Listing pages older than
+the administrator's fresh period are still shown at once (within the serve-while-refreshing window)
+and then refreshed in the background, once per area (``revalidate_job``).
+
 Anything that prevents full retrieval (budget, rate limit, provider failure, the
 configured safety cap) is recorded in ``partial_reasons`` and shown to the user.
 """
@@ -22,9 +27,10 @@ import math
 import statistics
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -34,7 +40,7 @@ from app.core.config import get_settings
 from app.core.db import session_scope
 from app.core.redis import get_redis
 from app.finance.scoring import ScoreWeights
-from app.models.tables import MarketSnapshot
+from app.models.tables import MarketSnapshot, Property
 from app.providers.base import (
     BedroomStat,
     BudgetExceeded,
@@ -63,7 +69,7 @@ from app.schemas.search import (
     StrategySummary,
 )
 
-from . import property_store, response_cache
+from . import property_store, response_cache, runtime_settings
 from .analysis import analyze
 from .dedupe import merge_listings
 
@@ -71,6 +77,16 @@ logger = logging.getLogger(__name__)
 
 JOB_TTL_SECONDS = 6 * 3600
 ProgressFn = Callable[[JobProgress], Awaitable[None]]
+# Called with every card analysed so far, for the previews shown while later pages still load.
+PublishFn = Callable[[list[PropertyCard]], Awaitable[None]]
+# cache: fresh pages, else stale ones (refreshed afterwards) · revalidate: re-fetch listing pages only ·
+# refresh: re-fetch everything, rents included (administrators).
+ListingMode = Literal["cache", "revalidate", "refresh"]
+# How long one background refresh of an area may hold its lock; other searches of the area wait for it.
+REVALIDATE_LOCK_SECONDS = 300
+REVALIDATE_WAIT_SECONDS = 120
+# Previews of a search still loading are published at most this often.
+PUBLISH_INTERVAL_SECONDS = 1.0
 
 
 # --------------------------------------------------------------------------- geometry
@@ -259,18 +275,31 @@ def _page_cache_key(kind: str, provider: Any, query: ListingQuery, offset: int) 
     return f"{kind}:" + hashlib.sha256(f"{provider.key}|{identity}|{offset}|{provider.page_size}".encode()).hexdigest()
 
 
-async def _cached_page(provider: ListingProvider, query: ListingQuery, offset: int, refresh: bool) -> ListingPage:
-    settings = get_settings()
+@dataclass
+class FetchedPage:
+    page: ListingPage
+    key: str
+    fetched_at: datetime
+    stale: bool = False  # older than the fresh period: shown now, refreshed in the background
+    from_cache: bool = False  # its listings were saved when the page was first fetched
+
+
+async def _cached_page(provider: ListingProvider, query: ListingQuery, offset: int, mode: ListingMode = "cache") -> FetchedPage:
+    """One page of sale listings: fresh from the shared cache, else a stale cached copy (``mode="cache"``
+    only, within the administrator's serve-while-refreshing window), else a new provider request."""
     cacheable = provider.key != "demo"
     key = _page_cache_key("listings", provider, query, offset)
-    if cacheable and not refresh:
-        cached = await response_cache.get_json(key)
-        if cached is not None:
-            return ListingPage.model_validate(cached)
+    if cacheable and mode == "cache":
+        entry = await response_cache.get_entry(key)
+        if entry is not None:
+            if entry.fresh:
+                return FetchedPage(ListingPage.model_validate(entry.payload), key, entry.fetched_at, from_cache=True)
+            if entry.fetched_at > datetime.now(UTC) - timedelta(seconds=await runtime_settings.listing_keep_seconds()):
+                return FetchedPage(ListingPage.model_validate(entry.payload), key, entry.fetched_at, stale=True, from_cache=True)
     page = await provider.search_listings(query, offset=offset, limit=provider.page_size)
     if cacheable:
-        await response_cache.set_json(key, page.model_dump(mode="json"), settings.listing_cache_ttl_seconds)
-    return page
+        await response_cache.set_json(key, page.model_dump(mode="json"))
+    return FetchedPage(page, key, datetime.now(UTC))
 
 
 class FetchOutcome(BaseModel):
@@ -278,9 +307,21 @@ class FetchOutcome(BaseModel):
     pages: int = 0
     partial_reasons: list[str] = []
     fatal: str | None = None
+    stale_keys: list[str] = []  # cache keys of pages served stale (they need a background refresh)
+    oldest_fetched_at: datetime | None = None
+    total_count: int | None = None  # matching listings, when the provider reports it
 
 
-async def fetch_all_listings(providers: ProviderSet, queries: list[ListingQuery], refresh: bool, on_page: Callable[[int, int], Awaitable[None]]) -> FetchOutcome:
+async def fetch_all_listings(
+    providers: ProviderSet,
+    queries: list[ListingQuery],
+    mode: ListingMode,
+    on_page: Callable[[int, int], Awaitable[None]],
+    on_batch: Callable[[list[ListingRecord], bool], Awaitable[None]] | None = None,
+) -> FetchOutcome:
+    """Every page of matching listings. ``on_batch`` receives each page (and whether it came from the
+    cache) as it arrives, so results can be analysed and shown before the last page is in. The next
+    page is requested while the current one is being analysed."""
     settings = get_settings()
     outcome = FetchOutcome()
     blocked: set[str] = set()
@@ -289,31 +330,51 @@ async def fetch_all_listings(providers: ProviderSet, queries: list[ListingQuery]
             if provider.key in blocked:
                 break
             offset = 0
-            while True:
-                if len(outcome.records) >= settings.max_listings_per_search:
-                    outcome.partial_reasons.append(
-                        f"Stopped after {len(outcome.records):,} listings (the configured MAX_LISTINGS_PER_SEARCH safety cap). More matching listings exist — narrow the area or raise the cap."
-                    )
-                    return outcome
-                try:
-                    page = await _cached_page(provider, query, offset, refresh)
-                except BudgetExceeded as exc:
-                    outcome.partial_reasons.append(f"{provider.name} API budget reached ({exc.message}); listings for {query.describe()} may be incomplete. Raise the budget in Settings to continue.")
-                    blocked.add(provider.key)
-                    break
-                except ProviderAuthError as exc:
-                    outcome.fatal = f"{provider.name}: {exc.message}"
-                    blocked.add(provider.key)
-                    break
-                except ProviderError as exc:
-                    outcome.partial_reasons.append(f"{provider.name} returned an error while loading {query.describe()} ({exc.message}); results for that area are incomplete.")
-                    break
-                outcome.records.extend(page.listings)
-                outcome.pages += 1
-                await on_page(outcome.pages, len(outcome.records))
-                if not page.has_more or page.next_offset <= offset:
-                    break
-                offset = page.next_offset
+            pending: asyncio.Task[FetchedPage] | None = None
+            try:
+                while True:
+                    try:
+                        fetched = await (pending if pending is not None else _cached_page(provider, query, offset, mode))
+                    except BudgetExceeded as exc:
+                        outcome.partial_reasons.append(f"{provider.name} API budget reached ({exc.message}); listings for {query.describe()} may be incomplete. Raise the budget in Settings to continue.")
+                        blocked.add(provider.key)
+                        break
+                    except ProviderAuthError as exc:
+                        outcome.fatal = f"{provider.name}: {exc.message}"
+                        blocked.add(provider.key)
+                        break
+                    except ProviderError as exc:
+                        outcome.partial_reasons.append(f"{provider.name} returned an error while loading {query.describe()} ({exc.message}); results for that area are incomplete.")
+                        break
+                    finally:
+                        pending = None
+                    page = fetched.page
+                    if fetched.stale:
+                        outcome.stale_keys.append(fetched.key)
+                    if outcome.oldest_fetched_at is None or fetched.fetched_at < outcome.oldest_fetched_at:
+                        outcome.oldest_fetched_at = fetched.fetched_at
+                    if offset == 0 and page.total_count is not None:
+                        outcome.total_count = (outcome.total_count or 0) + page.total_count
+                    outcome.records.extend(page.listings)
+                    outcome.pages += 1
+                    more = page.has_more and page.next_offset > offset
+                    capped = more and len(outcome.records) >= settings.max_listings_per_search
+                    if more and not capped:
+                        pending = asyncio.create_task(_cached_page(provider, query, page.next_offset, mode))
+                    if on_batch is not None:
+                        await on_batch(page.listings, fetched.from_cache)
+                    await on_page(outcome.pages, len(outcome.records))
+                    if capped:
+                        outcome.partial_reasons.append(
+                            f"Stopped after {len(outcome.records):,} listings (the configured MAX_LISTINGS_PER_SEARCH safety cap). More matching listings exist — narrow the area or raise the cap."
+                        )
+                        return outcome
+                    if not more:
+                        break
+                    offset = page.next_offset
+            finally:
+                if pending is not None:  # the batch failed: do not leave a request running
+                    pending.cancel()
     return outcome
 
 
@@ -454,7 +515,7 @@ async def _fetch_rentals(provider: Any, queries: list[ListingQuery], refresh: bo
                     return records, f"{provider.name} budget reached ({exc.message})"
                 except ProviderError as exc:
                     return records, f"{provider.name} rental listings unavailable ({exc.message})"
-                await response_cache.set_json(key, page.model_dump(mode="json"), settings.listing_cache_ttl_seconds)
+                await response_cache.set_json(key, page.model_dump(mode="json"))
             records.extend(page.listings)
             if not page.has_more or page.next_offset <= offset:
                 break
@@ -471,75 +532,124 @@ async def _save_snapshots(provider_key: str, stats: dict[str, MarketStats]) -> N
             await session.execute(stmt.on_conflict_do_update(index_elements=["zip_code", "provider_key"], set_=dict(data=stmt.excluded.data, fetched_at=stmt.excluded.fetched_at)))
 
 
-async def load_area_rent_stats(
-    providers: ProviderSet, zip_counts: dict[str, int], queries: list[ListingQuery], *, refresh: bool, partial: list[str], warnings: list[str]
-) -> dict[str, MarketStats]:
-    """Rent statistics for the ZIP codes of the candidates, spending as few paid requests as possible.
+class AreaRents:
+    """Rent statistics per ZIP for one search, filled in as batches of listings arrive, spending as few
+    paid requests as possible:
 
-    1. Fresh cached statistics (market API or rental-listing aggregates) — free.
-    2. The area's active rental listings, aggregated per ZIP — one paginated request per searched
-       location instead of one request per ZIP code.
+    1. Fresh stored statistics (market API or rental-listing aggregates) — free.
+    2. The area's active rental listings, aggregated per ZIP — fetched once per search (one paginated
+       request per searched location) instead of one request per ZIP code.
     3. The market-statistics endpoint for ZIPs still lacking a reliable sample, capped at
        ``MARKET_STATS_FALLBACK_MAX`` per search (unlimited in demo mode).
     """
-    market = providers.market
-    if market is None or not zip_counts:
-        return {}
-    settings = get_settings()
-    zips = sorted(zip_counts, key=lambda z: (-zip_counts[z], z))
-    rentals_key = _rentals_key(market.key)
-    result: dict[str, MarketStats] = {}
 
-    if not refresh:
-        cutoff = datetime.now(UTC) - timedelta(days=settings.market_stats_ttl_days)
-        async with session_scope() as session:
-            rows = (
-                await session.execute(
-                    select(MarketSnapshot).where(MarketSnapshot.zip_code.in_(zips), MarketSnapshot.provider_key.in_([market.key, rentals_key]), MarketSnapshot.fetched_at >= cutoff)
-                )
-            ).scalars().all()
-        cached: dict[str, dict[str, MarketStats]] = {}
-        for row in rows:
-            cached.setdefault(row.zip_code, {})[row.provider_key] = MarketStats.model_validate(row.data)
-        for zip_code, options in cached.items():
-            for key in (market.key, rentals_key):  # prefer the provider's own statistics
-                if key in options and options[key].has_reliable_rent():
-                    result[zip_code] = options[key]
-                    break
+    def __init__(self, providers: ProviderSet, queries: list[ListingQuery], *, refresh: bool, partial: list[str], warnings: list[str]):
+        self.providers = providers
+        self.market = providers.market
+        self.queries = queries
+        self.refresh = refresh
+        self.partial = partial
+        self.warnings = warnings
+        self.result: dict[str, MarketStats] = {}
+        self.tried: set[str] = set()
+        self.aggregated: dict[str, MarketStats] | None = None
+        demo = self.market is not None and self.market.key == "demo"
+        self.fallback_left: int | None = None if demo else max(get_settings().market_stats_fallback_max, 0)
+        self.budget_hit = False
+        self._lock = asyncio.Lock()
+        self._prefetch: asyncio.Task | None = None
 
-    missing = [z for z in zips if z not in result]
-    search_rentals = getattr(market, "search_rental_listings", None)
-    if missing and search_rentals is not None:
-        records, problem = await _fetch_rentals(market, queries, refresh)
-        aggregated = stats_from_rentals(records, market.key, datetime.now(UTC))
-        await _save_snapshots(rentals_key, aggregated)
+    def prefetch(self, zips: list[str]) -> None:
+        """Start loading rents for ZIP codes known up front, while the first listing page is fetched."""
+        if self.market is not None and zips:
+            self._prefetch = asyncio.create_task(self._locked_load(sorted(set(zips)), fallback=False))
+
+    async def close(self) -> None:
+        if self._prefetch is not None:
+            try:
+                await self._prefetch
+            except Exception:  # pragma: no cover - logged; the batches load what they need themselves
+                logger.exception("Area rent prefetch failed")
+
+    async def _locked_load(self, zips: list[str], *, fallback: bool) -> None:
+        async with self._lock:
+            await self._load(zips, fallback=fallback)
+
+    async def for_zips(self, zip_counts: dict[str, int]) -> dict[str, MarketStats]:
+        if self.market is None:
+            return {}
+        async with self._lock:
+            new = sorted((z for z in zip_counts if z not in self.tried), key=lambda z: (-zip_counts[z], z))
+            if new:
+                await self._load(new, fallback=True)
+                self.tried.update(new)
+            return {z: self.result[z] for z in zip_counts if z in self.result}
+
+    async def _load(self, zips: list[str], *, fallback: bool) -> None:
+        market = self.market
+        assert market is not None
+        rentals_key = _rentals_key(market.key)
+        zips = [z for z in zips if z not in self.result]
+        if zips and not self.refresh:
+            cutoff = datetime.now(UTC) - timedelta(days=get_settings().market_stats_ttl_days)
+            async with session_scope() as session:
+                rows = (
+                    await session.execute(
+                        select(MarketSnapshot).where(MarketSnapshot.zip_code.in_(zips), MarketSnapshot.provider_key.in_([market.key, rentals_key]), MarketSnapshot.fetched_at >= cutoff)
+                    )
+                ).scalars().all()
+            cached: dict[str, dict[str, MarketStats]] = {}
+            for row in rows:
+                cached.setdefault(row.zip_code, {})[row.provider_key] = MarketStats.model_validate(row.data)
+            for zip_code, options in cached.items():
+                for key in (market.key, rentals_key):  # prefer the provider's own statistics
+                    if key in options and options[key].has_reliable_rent():
+                        self.result[zip_code] = options[key]
+                        break
+
+        missing = [z for z in zips if z not in self.result]
+        if missing and self.aggregated is None and getattr(market, "search_rental_listings", None) is not None:
+            records, problem = await _fetch_rentals(market, self.queries, self.refresh)
+            self.aggregated = stats_from_rentals(records, market.key, datetime.now(UTC))
+            await _save_snapshots(rentals_key, self.aggregated)
+            if problem:
+                self.warnings.append(f"Area rents: {problem}.")
         for zip_code in missing:
-            if zip_code in aggregated and aggregated[zip_code].has_reliable_rent():
-                result[zip_code] = aggregated[zip_code]
-        if problem:
-            warnings.append(f"Area rents: {problem}.")
+            stats = (self.aggregated or {}).get(zip_code)
+            if stats is not None and stats.has_reliable_rent():
+                self.result[zip_code] = stats
 
-    missing = [z for z in zips if z not in result]
-    cap = len(missing) if market.key == "demo" else max(settings.market_stats_fallback_max, 0)
-    for zip_code in missing[:cap]:
-        try:
-            stats = await get_market_stats(providers, zip_code, refresh=refresh)
-        except BudgetExceeded as exc:
-            partial.append(f"Rent statistics could not be loaded for every ZIP code because the {market.name} budget was reached ({exc.message}). Properties without a rent estimate are shown as unranked.")
-            break
-        except ProviderError as exc:
-            warnings.append(f"Rent statistics unavailable for ZIP {zip_code} ({exc.message}).")
-            continue
-        if stats is not None:
-            result[zip_code] = stats
-    skipped = [z for z in zips if z not in result]
-    if skipped:
-        count = sum(zip_counts[z] for z in skipped)
-        warnings.append(
-            f"{count} propert{'y' if count == 1 else 'ies'} in ZIP {', '.join(skipped[:6])}{'…' if len(skipped) > 6 else ''} "
-            "had too few rental listings for an area rent estimate and are shown unranked. Open a property to request its own estimate."
-        )
-    return result
+        if not fallback:
+            return
+        for zip_code in [z for z in zips if z not in self.result]:
+            if self.budget_hit or (self.fallback_left is not None and self.fallback_left <= 0):
+                break
+            if self.fallback_left is not None:
+                self.fallback_left -= 1
+            try:
+                stats = await get_market_stats(self.providers, zip_code, refresh=self.refresh)
+            except BudgetExceeded as exc:
+                self.partial.append(
+                    f"Rent statistics could not be loaded for every ZIP code because the {market.name} budget was reached ({exc.message}). Properties without a rent estimate are shown as unranked."
+                )
+                self.budget_hit = True
+                break
+            except ProviderError as exc:
+                self.warnings.append(f"Rent statistics unavailable for ZIP {zip_code} ({exc.message}).")
+                continue
+            if stats is not None:
+                self.result[zip_code] = stats
+
+
+def thin_zip_warning(skipped: dict[str, int]) -> str | None:
+    if not skipped:
+        return None
+    zips = sorted(skipped, key=lambda z: (-skipped[z], z))
+    count = sum(skipped.values())
+    return (
+        f"{count} propert{'y' if count == 1 else 'ies'} in ZIP {', '.join(zips[:6])}{'…' if len(zips) > 6 else ''} "
+        "had too few rental listings for an area rent estimate and are shown unranked. Open a property to request its own estimate."
+    )
 
 
 # --------------------------------------------------------------------------- cards
@@ -625,6 +735,8 @@ class SearchOutcome(BaseModel):
     listings_fetched: int
     partial_reasons: list[str]
     warnings: list[str]
+    stale_keys: list[str] = []  # listing pages served from an older cached copy
+    data_as_of: datetime | None = None  # when the oldest listing page used was fetched
 
 
 async def _budgeted_top_n(provider_key: str, wanted: int) -> tuple[int, bool]:
@@ -679,10 +791,21 @@ def explain_no_matches(records: list[ListingRecord], filters: SearchFilters) -> 
     return None
 
 
-async def execute_search(request: SearchRunRequest, progress: ProgressFn, providers: ProviderSet | None = None) -> SearchOutcome:
+async def execute_search(
+    request: SearchRunRequest,
+    progress: ProgressFn,
+    providers: ProviderSet | None = None,
+    *,
+    publish: PublishFn | None = None,
+    listing_mode: ListingMode | None = None,
+) -> SearchOutcome:
+    """Run a search. Each page of listings is screened, priced and analysed as soon as it arrives, and
+    ``publish`` receives the cards so far (at most every ``PUBLISH_INTERVAL_SECONDS``) so people see
+    results while larger areas are still loading."""
     settings = get_settings()
     providers = providers or get_providers()
     filters = request.filters
+    mode: ListingMode = listing_mode or ("refresh" if request.refresh else "cache")
     partial: list[str] = []
     state = JobProgress(stage="resolving", message="Resolving locations", percent=3)
     await progress(state)
@@ -692,64 +815,102 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
     if not resolved.queries:
         return SearchOutcome(cards=[], listings_fetched=0, partial_reasons=[], warnings=warnings + ["No searchable location could be resolved from the filters."])
 
-    # -- fetch ---------------------------------------------------------------
-    async def on_page(pages: int, count: int) -> None:
-        state.stage, state.pages_fetched, state.listings_found = "fetching_listings", pages, count
-        state.message = "Loading listings"
-        state.percent = min(10 + pages * 3, 45)
-        await progress(state)
-
-    fetched = await fetch_all_listings(providers, resolved.queries, request.refresh, on_page)
-    partial.extend(fetched.partial_reasons)
-    if fetched.fatal and not fetched.records:
-        raise ProviderError("search", fetched.fatal)
-
-    # -- dedupe + persist -----------------------------------------------------
-    merged = merge_listings(fetched.records)
-    state.stage, state.message, state.percent = "screening", "Screening listings against your filters", 50
-    await progress(state)
-    if merged:
-        async with session_scope() as session:
-            await property_store.upsert_listings(session, merged)
+    rents = AreaRents(providers, resolved.queries, refresh=request.refresh, partial=partial, warnings=warnings)
+    if filters.zip_codes:
+        rents.prefetch(list(filters.zip_codes))  # rents load while the first listing page does
 
     def in_circles(record: ListingRecord) -> bool:
         if not resolved.circles or record.latitude is None or record.longitude is None:
             return True
         return any(miles_between(lat, lng, record.latitude, record.longitude) <= miles * 1.02 for lat, lng, miles in resolved.circles)
 
-    candidates = [m for m in merged if passes_listing_filters(m.primary, filters, resolved) and in_circles(m.primary)]
-    candidate_ids = [m.property_id for m in candidates]
-    if not candidate_ids:
-        reason = explain_no_matches([m.primary for m in merged], filters)
-        return SearchOutcome(cards=[], listings_fetched=len(merged), partial_reasons=partial, warnings=([reason] if reason else []) + warnings)
+    seen: set[uuid.UUID] = set()
+    screened: list[ListingRecord] = []  # every distinct listing, to explain an empty result
+    contexts: dict[uuid.UUID, PropertyContext] = {}
+    cards_by_id: dict[uuid.UUID, PropertyCard] = {}
+    skipped: dict[str, int] = {}  # ZIP -> properties left without an area rent
+    loop = asyncio.get_running_loop()
+    last_publish = -1e9
 
-    # -- ZIP-level rent statistics (cheap: one request per ZIP) ----------------
-    async with session_scope() as session:
-        contexts = await property_store.load_contexts(session, candidate_ids)
+    async def process(records: list[ListingRecord], from_cache: bool = False) -> None:
+        """Deduplicate, persist, screen, price and analyse one batch of listings."""
+        merged = [m for m in merge_listings(records) if m.property_id not in seen]
+        if not merged:
+            return
+        seen.update(m.property_id for m in merged)
+        screened.extend(m.primary for m in merged)
+        async with session_scope() as session:
+            to_save = merged
+            if from_cache:  # saved when the page was first fetched: only add homes that are missing
+                stored = set((await session.execute(select(Property.id).where(Property.id.in_([m.property_id for m in merged])))).scalars())
+                to_save = [m for m in merged if m.property_id not in stored]
+            if to_save:
+                await property_store.upsert_listings(session, to_save)
+        candidate_ids = [m.property_id for m in merged if passes_listing_filters(m.primary, filters, resolved) and in_circles(m.primary)]
+        if not candidate_ids:
+            return
+        async with session_scope() as session:
+            batch = await property_store.load_contexts(session, candidate_ids)
+        needs_rent = [c for c in batch.values() if c.rent is None and c.zip_code]
+        zip_counts: dict[str, int] = {}
+        for c in needs_rent:
+            zip_counts[c.zip_code] = zip_counts.get(c.zip_code, 0) + 1  # type: ignore[index]
+        if zip_counts and providers.market is not None:
+            market_by_zip = await rents.for_zips(zip_counts)
+            rows: list[tuple[uuid.UUID, RentEstimateRecord]] = []
+            for ctx in needs_rent:
+                stats = market_by_zip.get(ctx.zip_code or "")
+                if stats is None:
+                    skipped[ctx.zip_code or ""] = skipped.get(ctx.zip_code or "", 0) + 1
+                found = stats.screening_rent(ctx.bedrooms, ctx.square_feet) if stats else None
+                if found and stats:
+                    rent, low, high, sample = found
+                    rows.append((ctx.id, RentEstimateRecord(provider=stats.provider, level="market_zip", rent=rent, rent_low=low, rent_high=high, market_sample=sample, fetched_at=stats.fetched_at)))
+            if rows:
+                async with session_scope() as session:
+                    await property_store.save_market_rent_estimates(session, rows)
+                    batch = await property_store.load_contexts(session, candidate_ids)
+        contexts.update(batch)
+        for card in await asyncio.to_thread(_analyze_batch, list(batch.values()), request.defaults, request.weights):
+            cards_by_id[card.id] = card
 
-    needs_rent = [c for c in contexts.values() if c.rent is None and c.zip_code]
-    zip_counts: dict[str, int] = {}
-    for c in needs_rent:
-        zip_counts[c.zip_code] = zip_counts.get(c.zip_code, 0) + 1  # type: ignore[index]
-    if zip_counts and providers.market is not None:
-        state.stage, state.message, state.percent = "rent_estimates", f"Loading area rents for {len(zip_counts)} ZIP code{'s' if len(zip_counts) != 1 else ''}", 55
+    # Several listing providers must be merged across their full result sets, so batches are only
+    # processed page by page when there is a single one (the usual case).
+    progressive = len(providers.listing_providers) == 1
+
+    async def on_batch(records: list[ListingRecord], from_cache: bool) -> None:
+        nonlocal last_publish
+        if not progressive:
+            return
+        await process(records, from_cache)
+        if publish is not None and cards_by_id and loop.time() - last_publish >= PUBLISH_INTERVAL_SECONDS:
+            last_publish = loop.time()
+            await publish(list(cards_by_id.values()))
+
+    async def on_page(pages: int, count: int) -> None:
+        state.stage, state.pages_fetched, state.listings_found = "fetching_listings", pages, len(seen) or count
+        state.message = f"Analysed {len(cards_by_id):,} homes so far" if cards_by_id else "Loading listings"
+        state.percent = min(10 + pages * 8, 85)
         await progress(state)
-        market_by_zip = await load_area_rent_stats(providers, zip_counts, resolved.queries, refresh=request.refresh, partial=partial, warnings=warnings)
-        rows: list[tuple[uuid.UUID, RentEstimateRecord]] = []
-        for ctx in needs_rent:
-            stats = market_by_zip.get(ctx.zip_code or "")
-            found = stats.screening_rent(ctx.bedrooms, ctx.square_feet) if stats else None
-            if found and stats:
-                rent, low, high, sample = found
-                rows.append((ctx.id, RentEstimateRecord(provider=stats.provider, level="market_zip", rent=rent, rent_low=low, rent_high=high, market_sample=sample, fetched_at=stats.fetched_at)))
-        if rows:
-            async with session_scope() as session:
-                await property_store.save_market_rent_estimates(session, rows)
-                contexts = await property_store.load_contexts(session, candidate_ids)
 
-    # -- first-pass ranking ----------------------------------------------------
-    cards = await asyncio.to_thread(_analyze_batch, list(contexts.values()), request.defaults, request.weights)
-    cards_by_id = {card.id: card for card in cards}
+    try:
+        fetched = await fetch_all_listings(providers, resolved.queries, mode, on_page, on_batch)
+        partial.extend(fetched.partial_reasons)
+        if fetched.fatal and not fetched.records:
+            raise ProviderError("search", fetched.fatal)
+        if not progressive:
+            state.stage, state.message, state.percent = "screening", "Screening listings against your filters", 50
+            await progress(state)
+            await process(fetched.records)
+    finally:
+        await rents.close()
+
+    if not cards_by_id:
+        reason = explain_no_matches(screened, filters) if screened else None
+        return SearchOutcome(
+            cards=[], listings_fetched=len(seen), partial_reasons=partial, warnings=([reason] if reason else []) + warnings,
+            stale_keys=fetched.stale_keys, data_as_of=fetched.oldest_fetched_at,
+        )
 
     def promising() -> list[uuid.UUID]:
         """Candidates ordered by current long-term score (unranked properties last)."""
@@ -848,7 +1009,20 @@ async def execute_search(request: SearchRunRequest, progress: ProgressFn, provid
         for card in await asyncio.to_thread(_analyze_batch, list(refreshed.values()), request.defaults, request.weights):
             cards_by_id[card.id] = card
 
-    return SearchOutcome(cards=list(cards_by_id.values()), listings_fetched=len(merged), partial_reasons=partial, warnings=warnings)
+    still_unpriced = {z: n for z, n in skipped.items() if z not in rents.result}
+    if (note := thin_zip_warning(still_unpriced)) is not None:
+        warnings.append(note)
+    return SearchOutcome(
+        cards=list(cards_by_id.values()), listings_fetched=len(seen), partial_reasons=partial, warnings=warnings,
+        stale_keys=fetched.stale_keys, data_as_of=fetched.oldest_fetched_at,
+    )
+
+
+async def _write_snapshot(job: SearchJob, cards: list[PropertyCard]) -> None:
+    snapshot = {"cards": [card.model_dump(mode="json") for card in cards]}
+    await get_redis().set(_result_key(job.id), json.dumps(snapshot), ex=JOB_TTL_SECONDS)
+    job.results_version += 1
+    job.result_count = len(cards)
 
 
 async def run_search_job(job_id: str) -> None:
@@ -865,8 +1039,12 @@ async def run_search_job(job_id: str) -> None:
         job.progress = update.model_copy()
         await save_job(job)
 
+    async def publish(cards: list[PropertyCard]) -> None:
+        await _write_snapshot(job, cards)
+        await save_job(job)
+
     try:
-        outcome = await execute_search(request, progress)
+        outcome = await execute_search(request, progress, publish=publish)
     except Exception as exc:
         logger.exception("Search job %s failed", job_id)
         job.status = "failed"
@@ -876,19 +1054,62 @@ async def run_search_job(job_id: str) -> None:
         await get_redis().delete(f"searchcache:{request_hash(request, job.data_mode)}")
         return
 
-    snapshot = {"cards": [card.model_dump(mode="json") for card in outcome.cards]}
-    await get_redis().set(_result_key(job_id), json.dumps(snapshot), ex=JOB_TTL_SECONDS)
+    await _write_snapshot(job, outcome.cards)
     job.status = "completed"
     job.partial = bool(outcome.partial_reasons)
     job.partial_reasons = list(dict.fromkeys(outcome.partial_reasons))
     job.warnings = list(dict.fromkeys(outcome.warnings))
-    job.result_count = len(outcome.cards)
     job.listings_fetched = outcome.listings_fetched
+    job.data_as_of = outcome.data_as_of
     job.progress = JobProgress(stage="done", message=f"Ranked {len(outcome.cards):,} properties", percent=100, pages_fetched=job.progress.pages_fetched, listings_found=job.progress.listings_found)
     job.finished_at = datetime.now(UTC)
+    job.refreshing = bool(outcome.stale_keys) and not job.partial
     await save_job(job)
     if job.partial:
         await get_redis().delete(f"searchcache:{request_hash(request, job.data_mode)}")
+    if job.refreshing:
+        await revalidate_job(job, request, outcome.stale_keys)
+
+
+async def revalidate_job(job: SearchJob, request: SearchRunRequest, stale_keys: list[str]) -> None:
+    """Results were shown from older cached listings: fetch fresh ones in the background and swap them in.
+
+    One search per area does the paid refresh (a Redis lock on the stale pages); any other search of the
+    same area meanwhile waits for it and then re-reads the now-fresh cache, so an area is refreshed at
+    most once however many people search it.
+    """
+    redis = get_redis()
+    lock_key = "revalidate:" + hashlib.sha256("|".join(sorted(set(stale_keys))).encode()).hexdigest()[:32]
+    owner = False
+
+    async def quiet(_: JobProgress) -> None:
+        return None
+
+    try:
+        owner = bool(await redis.set(lock_key, job.id, nx=True, ex=REVALIDATE_LOCK_SECONDS))
+        mode: ListingMode = "revalidate"
+        if not owner:
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + REVALIDATE_WAIT_SECONDS
+            while loop.time() < deadline and await redis.exists(lock_key):
+                await asyncio.sleep(1)
+            mode = "cache"
+        outcome = await execute_search(request, quiet, listing_mode=mode)
+        if outcome.partial_reasons or outcome.stale_keys:
+            logger.info("Background refresh of search %s incomplete; keeping the earlier results", job.id)
+            return
+        await _write_snapshot(job, outcome.cards)
+        job.warnings = list(dict.fromkeys(outcome.warnings))
+        job.listings_fetched = outcome.listings_fetched
+        job.data_as_of = outcome.data_as_of
+        job.progress = job.progress.model_copy(update={"message": f"Ranked {len(outcome.cards):,} properties"})
+    except Exception:
+        logger.exception("Background refresh of search %s failed; keeping the earlier results", job.id)
+    finally:
+        job.refreshing = False
+        await save_job(job)
+        if owner and await redis.get(lock_key) == job.id:
+            await redis.delete(lock_key)
 
 
 # --------------------------------------------------------------------------- querying results

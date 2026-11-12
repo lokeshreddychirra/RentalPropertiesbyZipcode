@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton, Table, Td, Th } from "@/components/ui/card";
 import { Field, Input, NumberInput, Select } from "@/components/ui/form";
 import { api, errorMessage } from "@/lib/api";
-import { DataSourcesCard, NotificationsCard, UsageCard } from "@/components/admin/site-settings";
+import { CacheSettingsCard, DataSourcesCard, NotificationsCard, UsageCard } from "@/components/admin/site-settings";
 import { useSession, useStatus } from "@/lib/store";
 import type { AdminUser, AdminUsers, PlanInfo } from "@/lib/types";
 import { cn, relativeTime, shortDate } from "@/lib/utils";
@@ -418,6 +418,7 @@ export default function AdminUsersPage() {
       </Card>
 
       <UsageCard />
+      <CacheSettingsCard />
       <DataSourcesCard />
       <NotificationsCard />
     </div>

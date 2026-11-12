@@ -425,8 +425,19 @@ class ProviderResponseCache(Base):
     key: Mapped[str] = mapped_column(String(80), primary_key=True)
     kind: Mapped[str] = mapped_column(String(20))  # listings | rentals
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)  # purged after this
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at: Mapped[datetime] = _created()
+
+
+class AppSetting(Base):
+    """Site-wide settings an administrator can change at runtime (environment values are the defaults)."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    value: Mapped[Any] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = _updated()
 
 
 # --------------------------------------------------------------------------- user data
