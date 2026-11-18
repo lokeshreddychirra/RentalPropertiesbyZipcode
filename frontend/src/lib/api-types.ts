@@ -502,6 +502,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/searches/area-zips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Area Zips
+         * @description The ZIP codes a shape drawn on the map covers, and what searching them would use of the user's plan.
+         *
+         *     Uses the geocoder only (no listing provider requests). Areas wider than about 30 miles, or covering
+         *     more than ``max_zips`` ZIP codes, come back with ``too_large`` and a request to zoom in.
+         */
+        post: operations["area_zips_api_v1_searches_area_zips_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/searches/parse": {
         parameters: {
             query?: never;
@@ -1369,6 +1392,49 @@ export interface components {
             include?: ("forecast" | "scenarios" | "sensitivity" | "financing")[];
             /** Custom Financing */
             custom_financing?: components["schemas"]["CustomFinancing"][];
+        };
+        /** AreaZipsIn */
+        AreaZipsIn: {
+            /**
+             * Polygon
+             * @description [longitude, latitude] vertices
+             */
+            polygon: [
+                number,
+                number
+            ][];
+        };
+        /** AreaZipsOut */
+        AreaZipsOut: {
+            /**
+             * Zip Codes
+             * @default []
+             */
+            zip_codes: string[];
+            /**
+             * Max Zips
+             * @default 10
+             */
+            max_zips: number;
+            /**
+             * Too Large
+             * @default false
+             */
+            too_large: boolean;
+            /**
+             * Span Miles
+             * @default 0
+             */
+            span_miles: number;
+            /**
+             * New Searches
+             * @default 0
+             */
+            new_searches: number;
+            /** Searches Left */
+            searches_left?: number | null;
+            /** Message */
+            message?: string | null;
         };
         /** Assumptions */
         Assumptions: {
@@ -5016,6 +5082,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ZipAtOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    area_zips_api_v1_searches_area_zips_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AreaZipsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreaZipsOut"];
                 };
             };
             /** @description Validation Error */

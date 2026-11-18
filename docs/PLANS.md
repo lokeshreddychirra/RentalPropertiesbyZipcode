@@ -19,7 +19,12 @@ money with RentCast:
   (rent and value for 30 days, a known tax amount) is reused and not bought again. Opening a property
   is free: it shows the full analysis with the ZIP's area rent from the search. If every lookup fails,
   the report is given back.
-* Every search covers exactly **one ZIP code**, on every plan (administrators included).
+* A typed search covers exactly **one ZIP code**, on every plan (administrators included).
+* A shape **drawn on the map** can cover up to **10 ZIP codes** (`AREA_MAX_ZIPS`). The ZIP codes are
+  found with the geocoder (about 25 Mapbox lookups, no RentCast requests), only homes inside the shape
+  are kept, and every ZIP code the user has not searched in the current period counts as one ZIP
+  search. Larger areas are refused with a request to zoom in. Each new ZIP code costs RentCast
+  requests like a typed search does, so a 10-ZIP area can use around 20 or more requests.
 * Free allowances are for the lifetime of the account; paid allowances reset on the 1st of each
   month (UTC). Administrators are unlimited. Quotas apply in live data mode only.
 

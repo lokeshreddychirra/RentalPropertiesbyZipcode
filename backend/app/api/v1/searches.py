@@ -18,6 +18,7 @@ from app.providers.base import BudgetExceeded, ProviderError
 from app.providers.registry import get_providers
 from app.schemas.analysis import AssumptionOverrides
 from app.schemas.search import MapResults, SearchFilters, SearchJob, SearchResults, SearchRunRequest, SortKey
+from app.services import area as area_service
 from app.services import plans
 from app.services import search as search_service
 from app.services.jobs import enqueue_search
@@ -136,6 +137,48 @@ async def zip_at(
     except (ProviderError, BudgetExceeded):
         return ZipAtOut()
     return ZipAtOut(zip_code=hit.zip_code, place=hit.place) if hit else ZipAtOut()
+
+
+class AreaZipsIn(BaseModel):
+    polygon: list[tuple[float, float]] = Field(min_length=3, max_length=200, description="[longitude, latitude] vertices")
+
+
+class AreaZipsOut(BaseModel):
+    zip_codes: list[str] = []
+    max_zips: int = plans.AREA_MAX_ZIPS
+    too_large: bool = False
+    span_miles: float = 0
+    new_searches: int = 0
+    searches_left: int | None = None
+    message: str | None = None
+
+
+@router.post("/area-zips", response_model=AreaZipsOut, dependencies=[rate_limit("area-zips", 20, 60)])
+async def area_zips(body: AreaZipsIn, user: CurrentUser, session: Session) -> AreaZipsOut:
+    """The ZIP codes a shape drawn on the map covers, and what searching them would use of the user's plan.
+
+    Uses the geocoder only (no listing provider requests). Areas wider than about 30 miles, or covering
+    more than ``max_zips`` ZIP codes, come back with ``too_large`` and a request to zoom in.
+    """
+    for lng, lat in body.polygon:
+        if not (-180 <= lng <= 180 and -90 <= lat <= 90):
+            raise AppError("polygon vertices must be [longitude, latitude]", code="validation_error", status_code=422)
+    geocoder = get_providers().geocoder
+    if geocoder is None:
+        return AreaZipsOut(message="Searching a drawn area needs the map service, which is not configured.")
+    found = await area_service.zips_in_area(geocoder, list(body.polygon))
+    if found.too_large:
+        return AreaZipsOut(
+            zip_codes=found.zip_codes,
+            too_large=True,
+            span_miles=found.span_miles,
+            message=f"This area covers more than {plans.AREA_MAX_ZIPS} ZIP codes. Zoom in and draw a smaller area.",
+        )
+    if not found.zip_codes:
+        message = "The map service could not be reached. Try again in a moment." if found.lookup_failed else "No ZIP codes were found inside this area."
+        return AreaZipsOut(span_miles=found.span_miles, message=message)
+    new, left = await plans.zip_allowance(session, user, found.zip_codes)
+    return AreaZipsOut(zip_codes=found.zip_codes, span_miles=found.span_miles, new_searches=new, searches_left=left)
 
 
 @router.post("/parse", response_model=NLParseResult, dependencies=[rate_limit("nl", 30, 60)])

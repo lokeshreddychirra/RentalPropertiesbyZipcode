@@ -113,13 +113,15 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
       if (!quiet) setError("Enter a five digit ZIP code, for example 38116.");
       return;
     }
-    if (parsed.zip_codes.length > 1) {
+    // A drawn map area carries its own ZIP codes; keep it while the user only changes other filters.
+    const keepArea = !!initial?.polygon?.length && next.location === filtersToForm(initial).location;
+    if (parsed.zip_codes.length > 1 && !keepArea) {
       return setError("Search one ZIP code at a time.");
     }
     if (next.minPrice != null && next.maxPrice != null && next.minPrice > next.maxPrice) return setError("The minimum price is higher than the maximum price.");
     if (next.minYear != null && next.maxYear != null && next.minYear > next.maxYear) return setError("“Built from” is later than “built to”.");
     setError(null);
-    onSearch(formToFilters(next));
+    onSearch(keepArea ? { ...formToFilters(next), polygon: initial!.polygon } : formToFilters(next));
   };
   // Filter panels apply as soon as there is a ZIP code; without one they just remember the choice.
   const apply = (values?: Partial<FilterForm>) => {

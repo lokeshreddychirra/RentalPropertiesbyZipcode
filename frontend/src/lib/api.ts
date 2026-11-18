@@ -144,6 +144,11 @@ export const api = {
   results: (id: string, params: { sort: SortKey; page: number; page_size: number; bbox?: string | null; polygon?: string | null }) =>
     request<SearchResults>(`/searches/jobs/${id}/results${qs(params)}`),
   mapPoints: (id: string) => request<MapResults>(`/searches/jobs/${id}/map`),
+  areaZips: (polygon: [number, number][]) =>
+    request<{ zip_codes: string[]; max_zips: number; too_large: boolean; span_miles: number; new_searches: number; searches_left: number | null; message: string | null }>(
+      "/searches/area-zips",
+      { method: "POST", json: { polygon } },
+    ),
   zipAt: (latitude: number, longitude: number) => request<{ zip_code: string | null; place: string | null }>(`/searches/zip-at${qs({ latitude, longitude })}`),
   parseQuery: (query: string) => request<NLParseResult>("/searches/parse", { method: "POST", json: { query } }),
   saveSearch: (body: Record<string, unknown>) => request<SavedSearch>("/searches/save", { method: "POST", json: body }),

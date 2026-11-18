@@ -83,7 +83,14 @@ interface Props {
   interactive?: boolean;
   /** Floating content at the top centre of the map (hidden while drawing), e.g. "Search this ZIP". */
   overlay?: React.ReactNode;
+  /** Rendered in place of the default Apply button once a drawn shape is closed. */
+  pendingPanel?: (shape: LngLat[], controls: { redraw: () => void; cancel: () => void }) => React.ReactNode;
+  /** When set, the drawing hint asks the user to zoom in if the map is zoomed far out. */
+  areaZipLimit?: number;
 }
+
+/** Below this zoom level a drawn shape would usually cover far more than a handful of ZIP codes. */
+const MIN_DRAW_ZOOM = 10;
 
 /** Screen distance (px) a press must travel before it counts as a drag-to-draw stroke rather than a click. */
 const STROKE_START_PX = 6;
@@ -96,14 +103,32 @@ function thin(points: LngLat[]): LngLat[] {
   return Array.from({ length: MAX_STROKE_POINTS }, (_, i) => points[Math.floor(i * step)]);
 }
 
+/** Ray-casting point-in-polygon test (same rule the results API uses). */
+function inside(lng: number, lat: number, polygon: LngLat[]): boolean {
+  let hit = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) hit = !hit;
+  }
+  return hit;
+}
+
+/** Search-area line colour: a bright blue that reads on both the light and the dark basemap. */
+const AREA_COLOR = "#3d7eff";
+
 type PointerEvt = { lngLat: { lng: number; lat: number }; point: { x: number; y: number } };
 
-export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChange, polygon, onPolygonChange, allowDraw = false, className, secondary = [], interactive = true, overlay }: Props) {
+export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChange, polygon, onPolygonChange, allowDraw = false, className, secondary = [], interactive = true, overlay, pendingPanel, areaZipLimit }: Props) {
   const { lib, config } = useMapLibrary();
   const mapRef = React.useRef<import("react-map-gl/maplibre").MapRef | null>(null);
   const [view, setView] = React.useState<{ bounds: Bounds; zoom: number } | null>(null);
   const [drawing, setDrawing] = React.useState(false);
   const [draft, setDraft] = React.useState<LngLat[]>([]);
+  // True once the current drawing is a freehand stroke (drawn as a plain line, no corner dots).
+  const [freehand, setFreehand] = React.useState(false);
+  // A closed shape waiting for the user to press Apply.
+  const [pending, setPending] = React.useState<LngLat[] | null>(null);
   const [popupId, setPopupId] = React.useState<string | null>(null);
   const boundsTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const movedByUser = React.useRef(false);
@@ -159,17 +184,40 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
     if (selectedId) setPopupId(selectedId);
   }, [selectedId]);
 
+  // A new search (with or without an area) replaces any shape still waiting to be applied.
+  const polygonKey = polygon?.length ? JSON.stringify(polygon) : "";
+  React.useEffect(() => {
+    setPending(null);
+  }, [polygonKey]);
+
   if (!lib || !config) return <Skeleton className={cn("min-h-[320px] w-full", className)} />;
   const { default: MapGL, Marker, Popup, Source, Layer, NavigationControl } = lib;
   const usingMapbox = !!config.mapboxToken;
-  const shape = drawing ? draft : (polygon ?? []);
+  const shape = drawing ? draft : (pending ?? polygon ?? []);
+  const closed = !drawing || (!freehand && draft.length >= 3);
+  const homesInPending = pending ? points.filter((p) => inside(p.longitude, p.latitude, pending)).length : 0;
   const popupPoint = popupId ? byId.get(popupId) : null;
 
-  const finish = (shapePoints: LngLat[] = draft) => {
-    if (shapePoints.length >= 3) onPolygonChange?.(thin(shapePoints));
+  const startDrawing = () => {
+    setPending(null);
+    setDraft([]);
+    setFreehand(false);
+    setDrawing(true);
+  };
+  const stopDrawing = () => {
     setDrawing(false);
     setDraft([]);
+    setFreehand(false);
     stroke.current = null;
+  };
+  /** Close the shape and wait for Apply. */
+  const finish = (shapePoints: LngLat[] = draft) => {
+    if (shapePoints.length >= 3) setPending(thin(shapePoints));
+    stopDrawing();
+  };
+  const apply = () => {
+    if (pending) onPolygonChange?.(pending);
+    setPending(null);
   };
 
   // Drawing: press and drag to sketch the area (released = done), or click to place corner points.
@@ -191,7 +239,10 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
     if (!drawing || !current) return;
     const { x, y } = event.point;
     if (!current.dragging && Math.hypot(x - current.start.x, y - current.start.y) < STROKE_START_PX) return;
-    current.dragging = true;
+    if (!current.dragging) {
+      current.dragging = true;
+      setFreehand(true);
+    }
     if (Math.hypot(x - current.last.x, y - current.last.y) < 4) return;
     current.last = { x, y };
     current.points.push([event.lngLat.lng, event.lngLat.lat]);
@@ -203,7 +254,10 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
     if (!drawing || !current) return;
     if (current.dragging) {
       if (current.points.length >= 3) finish(current.points);
-      else setDraft([]);
+      else {
+        setDraft([]);
+        setFreehand(false);
+      }
       return;
     }
     // A click: add a corner point.
@@ -264,17 +318,18 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
             data={{
               type: "Feature",
               properties: {},
-              geometry: shape.length >= 3 ? { type: "Polygon", coordinates: [[...shape, shape[0]]] } : { type: "LineString", coordinates: shape },
+              // While a freehand stroke is in progress it is an open line, like a pen; it closes on release.
+              geometry: closed && shape.length >= 3 ? { type: "Polygon", coordinates: [[...shape, shape[0]]] } : { type: "LineString", coordinates: shape },
             }}
           >
-            {shape.length >= 3 ? <Layer id="search-area-fill" type="fill" paint={{ "fill-color": "#2a78d6", "fill-opacity": 0.1 }} /> : null}
-            <Layer id="search-area-line" type="line" paint={{ "line-color": "#2a78d6", "line-width": 2, "line-dasharray": drawing ? [2, 1.5] : [1, 0] }} />
+            {closed && shape.length >= 3 ? <Layer id="search-area-fill" type="fill" paint={{ "fill-color": AREA_COLOR, "fill-opacity": pending ? 0.16 : 0.1 }} /> : null}
+            <Layer id="search-area-line" type="line" layout={{ "line-join": "round", "line-cap": "round" }} paint={{ "line-color": AREA_COLOR, "line-width": drawing ? 3.5 : 3, "line-opacity": 0.95 }} />
           </Source>
         ) : null}
-        {drawing
+        {drawing && !freehand
           ? draft.map(([lng, lat], i) => (
               <Marker key={`v-${i}`} longitude={lng} latitude={lat}>
-                <span className="block size-2.5 rounded-full border-2 border-white bg-[#2a78d6] shadow" />
+                <span className="block size-3 rounded-full border-2 border-white shadow" style={{ backgroundColor: AREA_COLOR }} />
               </Marker>
             ))
           : null}
@@ -362,28 +417,41 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
 
       {allowDraw ? (
         <div className="absolute left-3 top-3 flex flex-wrap items-center gap-1.5">
-          {drawing ? (
+          {pending && pendingPanel ? (
+            pendingPanel(pending, { redraw: startDrawing, cancel: () => setPending(null) })
+          ) : pending ? (
             <>
-              <Button size="sm" onClick={() => finish()} disabled={draft.length < 3}>
-                <Check /> Finish area
+              <Button size="sm" className="shadow-lg" onClick={apply} data-testid="apply-area">
+                <Check /> Apply · {homesInPending} {homesInPending === 1 ? "home" : "homes"}
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setDrawing(false);
-                  setDraft([]);
-                }}
-              >
+              <Button size="sm" variant="outline" className="shadow" onClick={startDrawing}>
+                <PenLine /> Redraw
+              </Button>
+              <Button size="sm" variant="outline" className="shadow" onClick={() => setPending(null)}>
+                <X /> Cancel
+              </Button>
+            </>
+          ) : drawing ? (
+            <>
+              {!freehand && draft.length >= 3 ? (
+                <Button size="sm" onClick={() => finish()}>
+                  <Check /> Close shape
+                </Button>
+              ) : null}
+              <Button size="sm" variant="outline" className="shadow" onClick={stopDrawing}>
                 <X /> Cancel
               </Button>
               <span className="rounded-md bg-card/95 px-2 py-1 text-[11px] text-muted-foreground shadow" data-testid="draw-hint">
-                {draft.length ? `${draft.length} point${draft.length === 1 ? "" : "s"} · click to add more, double-click or Finish to close` : "Press and drag around an area, or click to place points"}
+                {draft.length && !freehand
+                  ? `${draft.length} point${draft.length === 1 ? "" : "s"} · click to add more, double-click to close`
+                  : areaZipLimit && (view?.zoom ?? 99) < MIN_DRAW_ZOOM
+                    ? `Zoom in first: an area can cover up to ${areaZipLimit} ZIP codes`
+                    : "Draw a shape around the area you want"}
               </span>
             </>
           ) : (
             <>
-              <Button size="sm" variant="outline" className="shadow" onClick={() => setDrawing(true)}>
+              <Button size="sm" variant="outline" className="shadow" onClick={startDrawing}>
                 <PenLine /> {polygon?.length ? "Redraw area" : "Draw search area"}
               </Button>
               {polygon?.length ? (
@@ -396,7 +464,7 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
         </div>
       ) : null}
 
-      {overlay && !drawing ? <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-3 [&>*]:pointer-events-auto">{overlay}</div> : null}
+      {overlay && !drawing && !pending ? <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-3 [&>*]:pointer-events-auto">{overlay}</div> : null}
 
       {points.length > 1 ? (
         <div className="absolute bottom-3 left-3 rounded-md bg-card/95 px-2.5 py-2 text-[10px] shadow" aria-label="Marker colour legend">

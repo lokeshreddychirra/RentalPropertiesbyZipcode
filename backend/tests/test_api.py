@@ -122,7 +122,6 @@ async def test_map_points_and_viewport_and_drawn_area_filters(client):
         {"state": "TN"},
         {"county": "Fayette", "state": "GA"},
         {"zip_codes": ["30269"], "radius_miles": 10},
-        {"polygon": [[-84.5, 33.7], [-84.4, 33.7], [-84.45, 33.8]]},
     ],
 )
 async def test_searches_are_by_zip_code_only(client, filters):
@@ -330,3 +329,32 @@ async def test_zip_at_point_finds_the_zip_under_the_map(client, anon_client):
     assert (await client.get(f"{API}/searches/zip-at", params={"latitude": 45.0, "longitude": -100.0})).json() == {"zip_code": None, "place": None}
     assert (await client.get(f"{API}/searches/zip-at", params={"latitude": 95, "longitude": 0})).status_code == 422
     assert (await anon_client.get(f"{API}/searches/zip-at", params={"latitude": 33.4, "longitude": -84.57})).status_code == 401
+
+
+PEACHTREE_AREA = [[-84.62, 33.36], [-84.52, 33.36], [-84.52, 33.44], [-84.62, 33.44]]
+
+
+async def test_drawn_area_lists_its_zip_codes_and_searches_only_inside_it(client):
+    found = (await client.post(f"{API}/searches/area-zips", json={"polygon": PEACHTREE_AREA})).json()
+    assert found["zip_codes"] == ["30269"] and not found["too_large"] and found["max_zips"] == 10
+    assert found["searches_left"] is None  # administrators have no limit
+
+    wide = (await client.post(f"{API}/searches/area-zips", json={"polygon": [[-85.5, 33.0], [-84.0, 33.0], [-84.0, 34.0]]})).json()
+    assert wide["too_large"] and "Zoom in" in wide["message"] and wide["zip_codes"] == []
+
+    # The search itself: the area's ZIP codes plus the shape; only homes inside the shape are kept.
+    small = [[-84.58, 33.39], [-84.56, 33.39], [-84.56, 33.41], [-84.58, 33.41]]
+    everything = await results(client, (await run_search(client, {"zip_codes": ["30269"]}))["id"])
+    inside = await results(client, (await run_search(client, {"zip_codes": ["30269"], "polygon": small}))["id"])
+    assert 0 < inside["total"] < everything["total"]
+    assert all(-84.58 <= item["longitude"] <= -84.56 and 33.39 <= item["latitude"] <= 33.41 for item in inside["items"])
+
+
+async def test_drawn_area_limits(client):
+    many = [f"{30200 + i:05d}" for i in range(11)]
+    response = await client.post(f"{API}/searches/run", json={"filters": {"zip_codes": many, "polygon": PEACHTREE_AREA}})
+    assert response.status_code == 422 and response.json()["error"]["code"] == "area_too_large"
+    response = await client.post(f"{API}/searches/run", json={"filters": {"zip_codes": ["30269", "30290"]}})
+    assert response.json()["error"]["code"] == "one_zip"  # several ZIP codes only come with a drawn area
+    response = await client.post(f"{API}/searches/run", json={"filters": {"polygon": PEACHTREE_AREA}})
+    assert response.status_code == 422

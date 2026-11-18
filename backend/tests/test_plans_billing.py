@@ -273,3 +273,16 @@ async def test_full_property_report_fetches_everything_missing_for_one_report(ap
     finally:
         await user.aclose()
         await anon.aclose()
+
+
+async def test_drawn_area_reports_what_it_would_use_of_the_plan(app, live_quotas):
+    area = [[-84.62, 33.36], [-84.52, 33.36], [-84.52, 33.44], [-84.62, 33.44]]
+    user, _ = await _new_user(app)
+    try:
+        before = (await user.post(f"{API}/searches/area-zips", json={"polygon": area})).json()
+        assert before["zip_codes"] == ["30269"] and before["new_searches"] == 1
+        assert (await user.post(f"{API}/searches/run", json={"filters": {"zip_codes": ["30269"], "polygon": area}})).status_code == 202
+        after = (await user.post(f"{API}/searches/area-zips", json={"polygon": area})).json()
+        assert after["new_searches"] == 0 and after["searches_left"] == before["searches_left"] - 1
+    finally:
+        await user.aclose()

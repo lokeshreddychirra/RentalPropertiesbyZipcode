@@ -30,8 +30,10 @@ from app.schemas.search import SearchFilters
 PLAN_KEYS = ("free", "pro", "premium")
 ZIP_SEARCH = "zip_search"
 PROPERTY_REPORT = "property_report"
-# Every search covers exactly one ZIP code, for every plan (keeps provider costs predictable).
+# A typed search covers exactly one ZIP code, for every plan (keeps provider costs predictable).
 ZIPS_PER_SEARCH = 1
+# A shape drawn on the map may cover up to this many ZIP codes (each new one still counts against the plan).
+AREA_MAX_ZIPS = 10
 
 
 @dataclass(frozen=True)
@@ -138,14 +140,32 @@ def _limit_error(plan: Plan, what: str, used: int, limit: int) -> PlanLimitError
 
 
 def validate_zip_only(filters: SearchFilters, user: User) -> list[str]:
-    """Searches are by ZIP code only (keeps provider costs predictable). Returns the ZIP codes."""
-    if filters.cities or filters.state or filters.county or filters.radius_miles or filters.polygon:
-        raise AppError("Search by ZIP code — city, state, county, radius and map-area searches are not available yet.", code="zip_only", status_code=422)
+    """Searches are by ZIP code (keeps provider costs predictable). Returns the ZIP codes.
+
+    A typed search covers one ZIP code. A shape drawn on the map comes with the ZIP codes it covers
+    (up to ``AREA_MAX_ZIPS``), and only homes inside the shape are kept.
+    """
+    if filters.cities or filters.state or filters.county or filters.radius_miles:
+        raise AppError("Search by ZIP code — city, state, county and radius searches are not available yet.", code="zip_only", status_code=422)
     if not filters.zip_codes:
         raise AppError("Enter at least one 5-digit ZIP code.", code="validation_error", status_code=422)
-    if len(filters.zip_codes) > ZIPS_PER_SEARCH:
+    if filters.polygon:
+        if len(filters.zip_codes) > AREA_MAX_ZIPS:
+            raise AppError(f"A drawn area can cover up to {AREA_MAX_ZIPS} ZIP codes. Zoom in and draw a smaller area.", code="area_too_large", status_code=422)
+    elif len(filters.zip_codes) > ZIPS_PER_SEARCH:
         raise AppError("Search one ZIP code at a time.", code="one_zip", status_code=422)
     return list(filters.zip_codes)
+
+
+async def zip_allowance(session: AsyncSession, user: User, zips: list[str]) -> tuple[int, int | None]:
+    """How many of ``zips`` would use a new ZIP search, and how many searches the user has left (None = no limit)."""
+    if is_unlimited(user) or not quotas_apply():
+        return 0, None
+    plan = plan_for(user)
+    used = await used_items(session, user, ZIP_SEARCH, current_period(plan))
+    new = sum(1 for z in zips if z not in used)
+    remaining = None if plan.zip_searches is None else max(plan.zip_searches - len(used), 0)
+    return new, remaining
 
 
 async def authorize_search(session: AsyncSession, user: User, filters: SearchFilters) -> None:

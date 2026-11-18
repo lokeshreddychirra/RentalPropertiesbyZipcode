@@ -381,6 +381,83 @@ interface Props {
   /** Shown beside the heading and search box (large screens) before any search is run. */
 }
 
+/** A drawn shape may cover up to this many ZIP codes (matches the backend). */
+const AREA_MAX_ZIPS = 10;
+
+/** Shown once a shape is closed: the ZIP codes it covers and what searching them uses of the plan. */
+function AreaSearchPanel({
+  shape,
+  unlimited,
+  onSearch,
+  onRedraw,
+  onCancel,
+}: {
+  shape: [number, number][];
+  unlimited: boolean;
+  onSearch: (zips: string[]) => void;
+  onRedraw: () => void;
+  onCancel: () => void;
+}) {
+  const lookup = useQuery({
+    queryKey: ["area-zips", JSON.stringify(shape)],
+    queryFn: () => api.areaZips(shape),
+    staleTime: Infinity,
+    retry: false,
+  });
+  const data = lookup.data;
+  const zips = data?.zip_codes ?? [];
+  const blocked = !!data && !data.too_large && data.searches_left != null && data.new_searches > data.searches_left;
+  const ready = !!data && !data.too_large && zips.length > 0 && !blocked;
+  const listed = zips.length > 4 ? `${zips.slice(0, 4).join(", ")} and ${zips.length - 4} more` : zips.join(", ");
+  return (
+    <div className="glass-strong w-[min(340px,calc(100vw-5rem))] space-y-2 rounded-xl p-3 shadow-xl" data-testid="area-panel">
+      {lookup.isLoading ? (
+        <p className="body-6 flex items-center gap-2 text-muted-foreground">
+          <RefreshCw className="size-4 animate-spin" aria-hidden /> Finding the ZIP codes in this area…
+        </p>
+      ) : lookup.isError ? (
+        <p className="body-6 text-negative">{errorMessage(lookup.error)}</p>
+      ) : data?.too_large ? (
+        <p className="body-6 text-caution" data-testid="area-too-large">
+          {data.message ?? `This area covers more than ${AREA_MAX_ZIPS} ZIP codes. Zoom in and draw a smaller area.`}
+        </p>
+      ) : !zips.length ? (
+        <p className="body-6 text-muted-foreground">{data?.message ?? "No ZIP codes were found inside this area."}</p>
+      ) : (
+        <>
+          <Button size="sm" className="w-full" disabled={!ready} onClick={() => onSearch(zips)} data-testid="search-area">
+            <Search /> Search this area · {zips.length} ZIP {zips.length === 1 ? "code" : "codes"}
+          </Button>
+          <p className="caption-5 text-pretty text-muted-foreground">{listed}</p>
+          {blocked ? (
+            <p className="caption-5 text-pretty text-caution">
+              This area has {data!.new_searches} new ZIP codes and you have {data!.searches_left} {data!.searches_left === 1 ? "search" : "searches"} left. Draw a smaller area, or{" "}
+              <Link href="/pricing" className="underline">
+                get more searches
+              </Link>
+              .
+            </p>
+          ) : unlimited || data?.searches_left == null ? null : data!.new_searches === 0 ? (
+            <p className="caption-5 text-muted-foreground">Already searched: uses no new ZIP searches.</p>
+          ) : (
+            <p className="caption-5 text-muted-foreground">
+              Uses {data!.new_searches} new ZIP {data!.new_searches === 1 ? "search" : "searches"} · {data!.searches_left} left
+            </p>
+          )}
+        </>
+      )}
+      <div className="flex gap-1.5">
+        <Button size="sm" variant="outline" onClick={onRedraw}>
+          Redraw
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          <X /> Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** Floating map button: search the ZIP code the user has panned to. */
 function SearchZipHere({ zip, place, unlimited, onSearch }: { zip: string; place: string | null; unlimited: boolean; onSearch: () => void }) {
   return (
@@ -415,7 +492,6 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
   const [followMap, setFollowMap] = React.useState(false);
   // Centre of the map once the user has moved it away from the results, to offer the ZIP code there.
   const [mapCentre, setMapCentre] = React.useState<{ latitude: number; longitude: number } | null>(null);
-  const [area, setArea] = React.useState<[number, number][] | null>(null);
   const [hovered, setHovered] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<string | null>(null);
 
@@ -450,7 +526,6 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
   // Reset map-scoped filters when the search itself changes.
   React.useEffect(() => {
     setBbox(null);
-    setArea(null);
     setSelected(null);
     setMapCentre(null);
   }, [rawFilters]);
@@ -504,12 +579,13 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
     if (jobId && latestVersion > 0 && shownVersion === 0) setShown({ job: jobId, version: latestVersion, at: Date.now() });
   }, [jobId, latestVersion, shownVersion]);
 
-  const polygonParam = area?.length ? area.map(([lng, lat]) => `${lng.toFixed(6)},${lat.toFixed(6)}`).join(";") : null;
+  // A drawn area is part of the search itself (filters.polygon): the job only keeps homes inside it.
+  const drawnArea = filters?.polygon?.length ? (filters.polygon as [number, number][]) : null;
   const activeBbox = followMap && view === "map" ? bbox : null;
 
   const resultsFor = (version: number) => ({
-    queryKey: ["search-results", jobId, version, sort, page, activeBbox, polygonParam],
-    queryFn: () => api.results(jobId as string, { sort, page, page_size: PAGE_SIZE, bbox: activeBbox, polygon: polygonParam }),
+    queryKey: ["search-results", jobId, version, sort, page, activeBbox],
+    queryFn: () => api.results(jobId as string, { sort, page, page_size: PAGE_SIZE, bbox: activeBbox }),
     retry: false,
     staleTime: Infinity,
   });
@@ -612,12 +688,28 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
         const [west, south, east, north] = bounds;
         setMapCentre(byUser ? { latitude: (south + north) / 2, longitude: (west + east) / 2 } : null);
       }}
-      overlay={nearbyZip ? <SearchZipHere zip={nearbyZip.zip_code} place={nearbyZip.place} unlimited={isAdmin} onSearch={() => navigate({ filters: { ...(filters as SearchFilters), zip_codes: [nearbyZip.zip_code] } })} /> : null}
-      polygon={area}
+      overlay={nearbyZip ? <SearchZipHere zip={nearbyZip.zip_code} place={nearbyZip.place} unlimited={isAdmin} onSearch={() => navigate({ filters: { ...(filters as SearchFilters), zip_codes: [nearbyZip.zip_code], polygon: null } })} /> : null}
+      polygon={drawnArea}
       onPolygonChange={(polygon) => {
-        setArea(polygon);
-        navigate({ page: 1 }, true);
+        // Only "Clear area" calls this; drawn shapes are searched through the area panel below.
+        if (polygon || !filters) return;
+        navigate({ filters: { ...filters, polygon: null, zip_codes: (filters.zip_codes ?? []).slice(0, 1) } });
       }}
+      areaZipLimit={AREA_MAX_ZIPS}
+      pendingPanel={(shape, controls) => (
+        <AreaSearchPanel
+          shape={shape}
+          unlimited={isAdmin}
+          onRedraw={controls.redraw}
+          onCancel={controls.cancel}
+          onSearch={(zips) => {
+            // Keep the ZIP codes already searched first, so "Clear area" returns to the original one.
+            const current = (filters?.zip_codes ?? []).filter((z) => zips.includes(z));
+            const ordered = [...current, ...zips.filter((z) => !current.includes(z))];
+            navigate({ filters: { ...(filters as SearchFilters), zip_codes: ordered, polygon: shape } });
+          }}
+        />
+      )}
       allowDraw
     />
   );
@@ -748,7 +840,13 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
                 <Switch checked={followMap} onCheckedChange={setFollowMap} aria-label="Only show properties in the visible map area" />
                 Only list properties in the visible map area
               </label>
-              {area?.length ? <span>Filtered to your drawn area ({area.length} points).</span> : <span>Draw an area on the map to filter results to it.</span>}
+              {drawnArea ? (
+                <span>
+                  Showing homes inside your drawn area ({filters?.zip_codes?.length ?? 0} ZIP {filters?.zip_codes?.length === 1 ? "code" : "codes"}).
+                </span>
+              ) : (
+                <span>Draw a shape on the map to search up to {AREA_MAX_ZIPS} ZIP codes inside it.</span>
+              )}
             </div>
           )}
 
@@ -757,7 +855,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
           {data && data.total === 0 ? (
             <EmptyState icon={<SearchX />} title="No properties match these filters">
               {data.summary.total > 0
-                ? `None of the matching homes meet your return thresholds${activeBbox || polygonParam ? " inside the selected map area" : ""}. Try lowering the yield, cap rate or cash flow minimums.`
+                ? `None of the matching homes meet your return thresholds${activeBbox || drawnArea ? " inside the selected map area" : ""}. Try lowering the yield, cap rate or cash flow minimums.`
                 : job.data_mode === "demo"
                   ? "The demo dataset only covers a set of sample markets (listed under the search panel). Try Atlanta, GA or ZIP 30269."
                   : (job.listings_fetched ?? 0) > 0
