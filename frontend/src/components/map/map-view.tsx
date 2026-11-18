@@ -72,8 +72,8 @@ interface Props {
   selectedId?: string | null;
   hoveredId?: string | null;
   onSelect?: (id: string | null) => void;
-  /** Fired (debounced) when the viewport changes, for "filter as I move the map". */
-  onBoundsChange?: (bounds: Bounds) => void;
+  /** Fired (debounced) when the viewport changes. `byUser` is true once the user has moved the map since it last fitted the results. */
+  onBoundsChange?: (bounds: Bounds, byUser: boolean) => void;
   polygon?: LngLat[] | null;
   onPolygonChange?: (polygon: LngLat[] | null) => void;
   allowDraw?: boolean;
@@ -81,9 +81,24 @@ interface Props {
   /** Extra static markers (e.g. comparables) rendered as small dots. */
   secondary?: { latitude: number; longitude: number; label: string }[];
   interactive?: boolean;
+  /** Floating content at the top centre of the map (hidden while drawing), e.g. "Search this ZIP". */
+  overlay?: React.ReactNode;
 }
 
-export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChange, polygon, onPolygonChange, allowDraw = false, className, secondary = [], interactive = true }: Props) {
+/** Screen distance (px) a press must travel before it counts as a drag-to-draw stroke rather than a click. */
+const STROKE_START_PX = 6;
+/** The most vertices kept from a freehand stroke (the results API accepts up to 200). */
+const MAX_STROKE_POINTS = 120;
+
+function thin(points: LngLat[]): LngLat[] {
+  if (points.length <= MAX_STROKE_POINTS) return points;
+  const step = points.length / MAX_STROKE_POINTS;
+  return Array.from({ length: MAX_STROKE_POINTS }, (_, i) => points[Math.floor(i * step)]);
+}
+
+type PointerEvt = { lngLat: { lng: number; lat: number }; point: { x: number; y: number } };
+
+export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChange, polygon, onPolygonChange, allowDraw = false, className, secondary = [], interactive = true, overlay }: Props) {
   const { lib, config } = useMapLibrary();
   const mapRef = React.useRef<import("react-map-gl/maplibre").MapRef | null>(null);
   const [view, setView] = React.useState<{ bounds: Bounds; zoom: number } | null>(null);
@@ -91,6 +106,10 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
   const [draft, setDraft] = React.useState<LngLat[]>([]);
   const [popupId, setPopupId] = React.useState<string | null>(null);
   const boundsTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const movedByUser = React.useRef(false);
+  const lastTouch = React.useRef(0);
+  // The press currently being drawn: where it started (screen px) and the points collected so far.
+  const stroke = React.useRef<{ start: { x: number; y: number }; last: { x: number; y: number }; points: LngLat[]; dragging: boolean } | null>(null);
 
   const index = React.useMemo(() => {
     const cluster = new Supercluster<{ point: MapPoint }>({ radius: 58, maxZoom: 15 });
@@ -110,7 +129,8 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
     setView({ bounds, zoom: map.getZoom() });
     if (onBoundsChange) {
       if (boundsTimer.current) clearTimeout(boundsTimer.current);
-      boundsTimer.current = setTimeout(() => onBoundsChange(bounds), 350);
+      const byUser = movedByUser.current;
+      boundsTimer.current = setTimeout(() => onBoundsChange(bounds, byUser), 350);
     }
   }, [onBoundsChange]);
 
@@ -119,6 +139,7 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
   const fit = React.useCallback(() => {
     const map = mapRef.current;
     if (!map || !points.length) return;
+    movedByUser.current = false;
     let west = 180, south = 90, east = -180, north = -90;
     for (const p of points) {
       west = Math.min(west, p.longitude);
@@ -144,10 +165,49 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
   const shape = drawing ? draft : (polygon ?? []);
   const popupPoint = popupId ? byId.get(popupId) : null;
 
-  const finish = () => {
-    if (draft.length >= 3) onPolygonChange?.(draft);
+  const finish = (shapePoints: LngLat[] = draft) => {
+    if (shapePoints.length >= 3) onPolygonChange?.(thin(shapePoints));
     setDrawing(false);
     setDraft([]);
+    stroke.current = null;
+  };
+
+  // Drawing: press and drag to sketch the area (released = done), or click to place corner points.
+  // Phones follow a touch with emulated mouse events; ignore those so a tap adds one point, not two.
+  const fromMouse = (handler: (event: PointerEvt) => void) => (event: PointerEvt) => {
+    if (Date.now() - lastTouch.current > 800) handler(event);
+  };
+  const fromTouch = (handler: (event: PointerEvt) => void) => (event: PointerEvt) => {
+    lastTouch.current = Date.now();
+    handler(event);
+  };
+  const pressStart = (event: PointerEvt) => {
+    if (!drawing) return;
+    const at = { x: event.point.x, y: event.point.y };
+    stroke.current = { start: at, last: at, points: [[event.lngLat.lng, event.lngLat.lat]], dragging: false };
+  };
+  const pressMove = (event: PointerEvt) => {
+    const current = stroke.current;
+    if (!drawing || !current) return;
+    const { x, y } = event.point;
+    if (!current.dragging && Math.hypot(x - current.start.x, y - current.start.y) < STROKE_START_PX) return;
+    current.dragging = true;
+    if (Math.hypot(x - current.last.x, y - current.last.y) < 4) return;
+    current.last = { x, y };
+    current.points.push([event.lngLat.lng, event.lngLat.lat]);
+    setDraft([...current.points]);
+  };
+  const pressEnd = () => {
+    const current = stroke.current;
+    stroke.current = null;
+    if (!drawing || !current) return;
+    if (current.dragging) {
+      if (current.points.length >= 3) finish(current.points);
+      else setDraft([]);
+      return;
+    }
+    // A click: add a corner point.
+    setDraft((existing) => [...existing, current.points[0]]);
   };
 
   return (
@@ -161,20 +221,31 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
         style={{ width: "100%", height: "100%" }}
         interactive={interactive}
         doubleClickZoom={!drawing}
+        dragPan={!drawing}
+        dragRotate={false}
+        boxZoom={!drawing}
+        touchPitch={false}
         cursor={drawing ? "crosshair" : undefined}
         onLoad={() => {
           fit();
           syncView();
         }}
+        onMoveStart={(event) => {
+          if ((event as { originalEvent?: unknown }).originalEvent) movedByUser.current = true;
+        }}
         onMoveEnd={syncView}
+        onMouseDown={fromMouse(pressStart)}
+        onMouseMove={fromMouse(pressMove)}
+        onMouseUp={fromMouse(pressEnd)}
+        onTouchStart={fromTouch(pressStart)}
+        onTouchMove={fromTouch(pressMove)}
+        onTouchEnd={fromTouch(pressEnd)}
         // Basemap tile failures (offline, blocked network) must not break the page: markers still render.
         onError={() => undefined}
-        onClick={(event) => {
-          if (drawing) setDraft((current) => [...current, [event.lngLat.lng, event.lngLat.lat]]);
-          else {
-            setPopupId(null);
-            onSelect?.(null);
-          }
+        onClick={() => {
+          if (drawing) return; // corner points are added on release (see pressEnd)
+          setPopupId(null);
+          onSelect?.(null);
         }}
         onDblClick={(event) => {
           if (drawing) {
@@ -221,7 +292,7 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
             const count = props.point_count ?? 0;
             const size = 30 + Math.min(count, 100) * 0.22;
             return (
-              <Marker key={`c-${props.cluster_id}`} longitude={lng} latitude={lat}>
+              <Marker key={`c-${props.cluster_id}`} longitude={lng} latitude={lat} style={drawing ? { pointerEvents: "none", opacity: 0.45 } : undefined}>
                 <button
                   type="button"
                   aria-label={`${count} properties — zoom in`}
@@ -242,7 +313,7 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
           const active = point.id === selectedId || point.id === hoveredId || point.id === popupId;
           const style = yieldStyle(point.gross_yield_pct);
           return (
-            <Marker key={point.id} longitude={lng} latitude={lat} anchor="bottom" style={{ zIndex: active ? 5 : 1 }}>
+            <Marker key={point.id} longitude={lng} latitude={lat} anchor="bottom" style={{ zIndex: active ? 5 : 1, ...(drawing ? { pointerEvents: "none" as const, opacity: 0.45 } : {}) }}>
               <button
                 type="button"
                 data-testid="map-marker"
@@ -293,7 +364,7 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
         <div className="absolute left-3 top-3 flex flex-wrap items-center gap-1.5">
           {drawing ? (
             <>
-              <Button size="sm" onClick={finish} disabled={draft.length < 3}>
+              <Button size="sm" onClick={() => finish()} disabled={draft.length < 3}>
                 <Check /> Finish area
               </Button>
               <Button
@@ -306,7 +377,9 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
               >
                 <X /> Cancel
               </Button>
-              <span className="rounded-md bg-card/95 px-2 py-1 text-[11px] text-muted-foreground shadow">Click to add points ({draft.length}); double-click to finish</span>
+              <span className="rounded-md bg-card/95 px-2 py-1 text-[11px] text-muted-foreground shadow" data-testid="draw-hint">
+                {draft.length ? `${draft.length} point${draft.length === 1 ? "" : "s"} · click to add more, double-click or Finish to close` : "Press and drag around an area, or click to place points"}
+              </span>
             </>
           ) : (
             <>
@@ -322,6 +395,8 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
           )}
         </div>
       ) : null}
+
+      {overlay && !drawing ? <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-3 [&>*]:pointer-events-auto">{overlay}</div> : null}
 
       {points.length > 1 ? (
         <div className="absolute bottom-3 left-3 rounded-md bg-card/95 px-2.5 py-2 text-[10px] shadow" aria-label="Marker colour legend">

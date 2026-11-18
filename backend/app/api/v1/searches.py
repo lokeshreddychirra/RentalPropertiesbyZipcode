@@ -14,6 +14,8 @@ from sqlalchemy import select
 from app.api.deps import CurrentUser, Session, rate_limit
 from app.core.errors import AppError, NotFoundError
 from app.models.tables import SavedSearch
+from app.providers.base import BudgetExceeded, ProviderError
+from app.providers.registry import get_providers
 from app.schemas.analysis import AssumptionOverrides
 from app.schemas.search import MapResults, SearchFilters, SearchJob, SearchResults, SearchRunRequest, SortKey
 from app.services import plans
@@ -108,6 +110,32 @@ async def get_map_points(job_id: str) -> MapResults:
 
 class ParseRequest(BaseModel):
     query: str = Field(min_length=3, max_length=500)
+
+
+class ZipAtOut(BaseModel):
+    zip_code: str | None = None
+    place: str | None = None
+
+
+@router.get("/zip-at", response_model=ZipAtOut, dependencies=[rate_limit("zip-at", 60, 60)])
+async def zip_at(
+    user: CurrentUser,
+    latitude: Annotated[float, Query(ge=-90, le=90)],
+    longitude: Annotated[float, Query(ge=-180, le=180)],
+) -> ZipAtOut:
+    """The ZIP code under a point on the results map, so the user can search the next ZIP over.
+
+    Uses the geocoder only (no listing provider requests). Answers with no ZIP when none is found or
+    no geocoder is configured.
+    """
+    geocoder = get_providers().geocoder
+    if geocoder is None:
+        return ZipAtOut()
+    try:
+        hit = await geocoder.zip_at(round(latitude, 3), round(longitude, 3))
+    except (ProviderError, BudgetExceeded):
+        return ZipAtOut()
+    return ZipAtOut(zip_code=hit.zip_code, place=hit.place) if hit else ZipAtOut()
 
 
 @router.post("/parse", response_model=NLParseResult, dependencies=[rate_limit("nl", 30, 60)])

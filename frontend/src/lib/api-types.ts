@@ -479,6 +479,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/searches/zip-at": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Zip At
+         * @description The ZIP code under a point on the results map, so the user can search the next ZIP over.
+         *
+         *     Uses the geocoder only (no listing provider requests). Answers with no ZIP when none is found or
+         *     no geocoder is configured.
+         */
+        get: operations["zip_at_api_v1_searches_zip_at_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/searches/parse": {
         parameters: {
             query?: never;
@@ -4195,6 +4218,13 @@ export interface components {
              */
             property_count: number;
         };
+        /** ZipAtOut */
+        ZipAtOut: {
+            /** Zip Code */
+            zip_code?: string | null;
+            /** Place */
+            place?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -4954,6 +4984,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MapResults"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    zip_at_api_v1_searches_zip_at_get: {
+        parameters: {
+            query: {
+                latitude: number;
+                longitude: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZipAtOut"];
                 };
             };
             /** @description Validation Error */

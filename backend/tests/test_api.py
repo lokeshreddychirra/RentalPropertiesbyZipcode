@@ -322,3 +322,11 @@ async def test_auth_favorites_saved_searches_and_admin(anon_client):
     assert (await client.delete(f"{API}/searches/saved/{saved.json()['id']}")).status_code == 404
     bad_login = await client.post(f"{API}/auth/login", json={"email": "user@example.com", "password": "wrong-password-here"})
     assert bad_login.status_code == 401
+
+
+async def test_zip_at_point_finds_the_zip_under_the_map(client, anon_client):
+    near = (await client.get(f"{API}/searches/zip-at", params={"latitude": 33.40, "longitude": -84.57})).json()
+    assert near == {"zip_code": "30269", "place": "Peachtree City, GA"}
+    assert (await client.get(f"{API}/searches/zip-at", params={"latitude": 45.0, "longitude": -100.0})).json() == {"zip_code": None, "place": None}
+    assert (await client.get(f"{API}/searches/zip-at", params={"latitude": 95, "longitude": 0})).status_code == 422
+    assert (await anon_client.get(f"{API}/searches/zip-at", params={"latitude": 33.4, "longitude": -84.57})).status_code == 401

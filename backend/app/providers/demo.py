@@ -33,6 +33,7 @@ from .base import (
     StrEstimateRecord,
     SubjectProperty,
     ValueEstimateRecord,
+    ZipAtPoint,
 )
 
 KEY = "demo"
@@ -445,6 +446,13 @@ class DemoProvider:
         )
 
     # ------------------------------------------------------------------ geocoding
+
+    async def zip_at(self, latitude: float, longitude: float) -> ZipAtPoint | None:
+        """The nearest demo ZIP code, if the point is within a few miles of one."""
+        nearest = min(MARKETS, key=lambda m: haversine_miles(latitude, longitude, m.latitude, m.longitude))
+        if haversine_miles(latitude, longitude, nearest.latitude, nearest.longitude) > 8:
+            return None
+        return ZipAtPoint(zip_code=nearest.zip_code, place=f"{nearest.city}, {nearest.state}")
 
     async def geocode(self, query: str, *, kinds: tuple[str, ...] = ()) -> GeocodeResult | None:
         text = query.strip().lower()

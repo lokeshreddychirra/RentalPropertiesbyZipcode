@@ -298,6 +298,13 @@ class GeocodeResult(BaseModel):
     kind: str | None = None
 
 
+class ZipAtPoint(BaseModel):
+    """The ZIP code covering a point on the map."""
+
+    zip_code: str
+    place: str | None = None  # e.g. "Fayetteville, GA"
+
+
 class SubjectProperty(BaseModel):
     """What an estimate provider needs to know about the home being valued."""
 
@@ -373,3 +380,5 @@ class Geocoder(Protocol):
     key: str
 
     async def geocode(self, query: str, *, kinds: tuple[str, ...] = ()) -> GeocodeResult | None: ...
+
+    async def zip_at(self, latitude: float, longitude: float) -> ZipAtPoint | None: ...

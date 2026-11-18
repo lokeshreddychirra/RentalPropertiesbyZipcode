@@ -96,6 +96,7 @@ POST /searches/run                          start a background search job
 GET  /searches/jobs/{id}                    progress, partial flags, warnings
 GET  /searches/jobs/{id}/results            sorted, paginated cards (bbox / polygon filters)
 GET  /searches/jobs/{id}/map                points for the map
+GET  /searches/zip-at                        ZIP code at a map point (geocoder only)
 POST /searches/parse                        natural language → filters
 GET  /properties/{id}                       listing details, history, sources
 GET  /properties/{id}/rent-estimate         rent estimate + comparables

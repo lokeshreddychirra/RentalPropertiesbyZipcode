@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, BookmarkPlus, ChevronLeft, ChevronRight, GitCompareArrows, Info, LayoutGrid, Lock, Map as MapIcon, RefreshCw, SearchX, Sparkles, Table2, X } from "@/components/ui/icons";
+import { ArrowUp, BookmarkPlus, ChevronLeft, ChevronRight, GitCompareArrows, Info, LayoutGrid, Lock, Map as MapIcon, RefreshCw, Search, SearchX, Sparkles, Table2, X } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { MapView } from "@/components/map/map-view";
 import { ConfidenceBadge, DemoTag, ScoreRing } from "@/components/property/bits";
@@ -381,6 +381,19 @@ interface Props {
   /** Shown beside the heading and search box (large screens) before any search is run. */
 }
 
+/** Floating map button: search the ZIP code the user has panned to. */
+function SearchZipHere({ zip, place, unlimited, onSearch }: { zip: string; place: string | null; unlimited: boolean; onSearch: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-1" data-testid="search-zip-here">
+      <Button size="sm" className="shadow-lg" onClick={onSearch}>
+        <Search /> Search ZIP {zip}
+        {place ? <span className="font-normal opacity-80">· {place}</span> : null}
+      </Button>
+      {unlimited ? null : <span className="rounded-full bg-card/90 px-2 py-0.5 text-[10px] text-muted-foreground shadow">Uses 1 of your ZIP searches if it is a new ZIP</span>}
+    </div>
+  );
+}
+
 export function SearchExperience({ basePath, defaultView = "list", heading, idle }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -400,6 +413,8 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
   const [refreshToken, setRefreshToken] = React.useState(0);
   const [bbox, setBbox] = React.useState<string | null>(null);
   const [followMap, setFollowMap] = React.useState(false);
+  // Centre of the map once the user has moved it away from the results, to offer the ZIP code there.
+  const [mapCentre, setMapCentre] = React.useState<{ latitude: number; longitude: number } | null>(null);
   const [area, setArea] = React.useState<[number, number][] | null>(null);
   const [hovered, setHovered] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<string | null>(null);
@@ -437,6 +452,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
     setBbox(null);
     setArea(null);
     setSelected(null);
+    setMapCentre(null);
   }, [rawFilters]);
 
   const requestKey = React.useMemo(() => JSON.stringify([filters, defaultsOrNull, weights, refreshToken]), [filters, defaultsOrNull, weights, refreshToken]);
@@ -572,6 +588,18 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
       </div>
     );
 
+  // The ZIP code at the centre of the map, once the user pans away from the searched one (geocoder only, no listing requests).
+  const centreKey = mapCentre ? [mapCentre.latitude.toFixed(3), mapCentre.longitude.toFixed(3)] : null;
+  const zipHere = useQuery({
+    queryKey: ["zip-at", ...(centreKey ?? [])],
+    queryFn: () => api.zipAt(Number(centreKey![0]), Number(centreKey![1])),
+    enabled: !!centreKey && !!user && view === "map" && !!filters,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const nearbyZip =
+    mapCentre && zipHere.data?.zip_code && !filters?.zip_codes?.includes(zipHere.data.zip_code) ? { zip_code: zipHere.data.zip_code, place: zipHere.data.place } : null;
+
   const map = (className: string) => (
     <MapView
       className={className}
@@ -579,7 +607,12 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
       selectedId={selected}
       hoveredId={hovered}
       onSelect={setSelected}
-      onBoundsChange={(bounds) => setBbox(bounds.map((v) => v.toFixed(5)).join(","))}
+      onBoundsChange={(bounds, byUser) => {
+        setBbox(bounds.map((v) => v.toFixed(5)).join(","));
+        const [west, south, east, north] = bounds;
+        setMapCentre(byUser ? { latitude: (south + north) / 2, longitude: (west + east) / 2 } : null);
+      }}
+      overlay={nearbyZip ? <SearchZipHere zip={nearbyZip.zip_code} place={nearbyZip.place} unlimited={isAdmin} onSearch={() => navigate({ filters: { ...(filters as SearchFilters), zip_codes: [nearbyZip.zip_code] } })} /> : null}
       polygon={area}
       onPolygonChange={(polygon) => {
         setArea(polygon);

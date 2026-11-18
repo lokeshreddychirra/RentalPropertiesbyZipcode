@@ -583,3 +583,22 @@ async def test_admin_can_change_how_long_listings_stay_fresh(app, client, anon_c
 
     await client.put(f"{API}/system/cache-settings", json={"listing_cache_hours": 24, "listing_stale_days": 7})
     assert await runtime_settings.listing_keep_seconds() == timedelta(days=8).total_seconds()
+
+
+async def test_mapbox_reverse_lookup_reads_the_zip_and_place():
+    from app.providers.mapbox import MapboxGeocoder
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(path=request.url.path, types=request.url.params.get("types"))
+        feature = {"properties": {"name": "30214", "context": {"place": {"name": "Fayetteville"}, "region": {"region_code": "GA"}}}}
+        return httpx.Response(200, json={"features": [feature]})
+
+    geocoder = MapboxGeocoder(Settings(mapbox_access_token="pk.test"), transport=httpx.MockTransport(handler))
+    try:
+        hit = await geocoder.zip_at(33.45, -84.45)
+    finally:
+        await geocoder.aclose()
+    assert seen == {"path": "/search/geocode/v6/reverse", "types": "postcode"}
+    assert hit is not None and hit.zip_code == "30214" and hit.place == "Fayetteville, GA"

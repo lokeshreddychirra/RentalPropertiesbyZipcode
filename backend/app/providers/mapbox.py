@@ -1,5 +1,5 @@
-"""Mapbox forward geocoding (server side), used to resolve "near Atlanta" style
-radius and county searches to coordinates.
+"""Mapbox geocoding (server side): forward lookups resolve "near Atlanta" style radius and county
+searches to coordinates; reverse lookups find the ZIP code under a point on the results map.
 
 Results come from Mapbox's temporary geocoding endpoint, whose terms do not allow
 storing results, so they are used for the current search only and never persisted.
@@ -11,7 +11,7 @@ import httpx
 
 from app.core.config import Settings
 
-from .base import GeocodeResult
+from .base import GeocodeResult, ZipAtPoint
 from .http import ProviderHTTPClient
 
 KEY = "mapbox"
@@ -53,3 +53,19 @@ class MapboxGeocoder:
             bbox=tuple(bbox) if isinstance(bbox, list) and len(bbox) == 4 else None,  # type: ignore[arg-type]
             kind=properties.get("feature_type"),
         )
+
+    async def zip_at(self, latitude: float, longitude: float) -> ZipAtPoint | None:
+        params = {"longitude": f"{longitude:.5f}", "latitude": f"{latitude:.5f}", "types": "postcode", "country": "us", "limit": 1, "access_token": self._token}
+        data = await self._http.get_json("/search/geocode/v6/reverse", params=params, endpoint="geocode/reverse")
+        features = data.get("features") if isinstance(data, dict) else None
+        if not features:
+            return None
+        properties = features[0].get("properties") or {}
+        context = properties.get("context") or {}
+        zip_code = str(properties.get("name") or (context.get("postcode") or {}).get("name") or "")[:5]
+        if len(zip_code) != 5 or not zip_code.isdigit():
+            return None
+        city = (context.get("place") or {}).get("name") or (context.get("locality") or {}).get("name")
+        state = (context.get("region") or {}).get("region_code")
+        place = ", ".join(part for part in (city, state) if part) or None
+        return ZipAtPoint(zip_code=zip_code, place=place)
