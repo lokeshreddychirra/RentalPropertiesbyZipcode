@@ -78,17 +78,30 @@ export interface ParsedLocation {
  * ("TN"), and cities with their state ("Memphis, TN" or "Memphis TN"); several entries can be
  * separated with ";".
  */
-/** Searches are by ZIP code only (for now): accepts "38116" or "38116, 38118". */
+/** ZIP codes typed in the search box: "38116" or "38116, 38118". */
 export function parseZips(text: string): { zip_codes: string[]; error: string | null } {
   const tokens = text.split(/[\s,;]+/).filter(Boolean);
   const zips: string[] = [];
   for (const token of tokens) {
     if (!/^\d{5}$/.test(token)) {
-      return { zip_codes: [], error: /^\d+$/.test(token) ? `“${token}” is not a 5-digit ZIP code.` : "Search by ZIP code — for example 38116. City and state searches are coming later." };
+      return { zip_codes: [], error: /^\d+$/.test(token) ? `“${token}” is not a 5-digit ZIP code.` : "Enter a 5-digit ZIP code or a city, for example 38116 or Memphis, TN." };
     }
     if (!zips.includes(token)) zips.push(token);
   }
   return { zip_codes: zips, error: null };
+}
+
+/** True when the search box holds a city or place name rather than ZIP codes. */
+export function isPlaceText(text: string): boolean {
+  return /[A-Za-z]/.test(text);
+}
+
+/** The user's default filters under a new search's own filters (the search's values win). */
+export function withDefaults(filters: SearchFilters, defaults: Partial<SearchFilters> | null | undefined): SearchFilters {
+  if (!defaults) return filters;
+  const merged: Record<string, unknown> = { ...defaults };
+  for (const [key, value] of Object.entries(filters)) if (value !== undefined) merged[key] = value;
+  return merged as SearchFilters;
 }
 
 export function parseLocation(text: string): ParsedLocation {
@@ -121,6 +134,7 @@ export function parseLocation(text: string): ParsedLocation {
 
 export function formatLocation(filters: Partial<SearchFilters> | null | undefined): string {
   if (!filters) return "";
+  if (filters.place) return filters.place;
   const parts: string[] = [];
   if (filters.cities?.length) parts.push(...filters.cities);
   if (filters.zip_codes?.length) parts.push(filters.zip_codes.join(", "));
@@ -218,7 +232,8 @@ export function searchHref(filters: SearchFilters, extra: { sort?: string; view?
 export function describeFilters(filters: Partial<SearchFilters>): string {
   const parts: string[] = [];
   if (filters.cities?.length) parts.push(filters.cities.join("; "));
-  if (filters.zip_codes?.length) parts.push(`ZIP ${filters.zip_codes.join(", ")}`);
+  if (filters.place) parts.push(`${filters.place} (${filters.zip_codes?.length ?? 0} ZIP ${filters.zip_codes?.length === 1 ? "code" : "codes"})`);
+  else if (filters.zip_codes?.length) parts.push(`ZIP ${filters.zip_codes.join(", ")}`);
   if (filters.county) parts.push(`${filters.county} County${filters.state ? `, ${filters.state}` : ""}`);
   else if (filters.state && !filters.cities?.length && !filters.zip_codes?.length) parts.push(filters.state);
   if (filters.polygon?.length && !parts.length) parts.push("Drawn map area");

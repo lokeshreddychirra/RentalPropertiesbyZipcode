@@ -299,6 +299,23 @@ async def test_auth_favorites_saved_searches_and_admin(anon_client):
     assert prefs.status_code == 200
     assert (await client.get(f"{API}/auth/preferences")).json()["default_assumptions"]["financing"]["interest_rate_pct"] == 6.5
 
+    # Search defaults from the Settings page: location fields are never kept, the rest is.
+    defaults = {
+        "filters": {"zip_codes": ["30269"], "max_price": 300000, "min_beds": 3, "property_types": ["single_family"], "min_cash_flow": 100},
+        "sort": "cash_flow",
+        "view": "map",
+        "map_place": {"label": "Peachtree City, GA", "latitude": 33.39, "longitude": -84.57},
+    }
+    stored = (await client.put(f"{API}/auth/preferences", json={"search_defaults": defaults})).json()
+    kept = {k: v for k, v in stored["search_defaults"]["filters"].items() if v not in (None, [])}
+    assert kept == {"max_price": 300000, "min_beds": 3, "property_types": ["single_family"], "min_cash_flow": 100}
+    assert stored["search_defaults"]["sort"] == "cash_flow" and stored["search_defaults"]["map_place"]["label"] == "Peachtree City, GA"
+    assert stored["default_assumptions"]["financing"]["interest_rate_pct"] == 6.5  # other preferences untouched
+    bad = await client.put(f"{API}/auth/preferences", json={"search_defaults": {"sort": "nonsense"}})
+    assert bad.status_code == 422
+    cleared = (await client.put(f"{API}/auth/preferences", json={"search_defaults": None})).json()
+    assert cleared["search_defaults"] is None
+
     budget = await client.put(f"{API}/system/budgets/rentcast", json={"monthly_request_limit": 250})
     assert budget.status_code == 200 and budget.json()["monthly_request_limit"] == 250
     regulation = await client.put(
@@ -328,7 +345,33 @@ async def test_zip_at_point_finds_the_zip_under_the_map(client, anon_client):
     assert near == {"zip_code": "30269", "place": "Peachtree City, GA"}
     assert (await client.get(f"{API}/searches/zip-at", params={"latitude": 45.0, "longitude": -100.0})).json() == {"zip_code": None, "place": None}
     assert (await client.get(f"{API}/searches/zip-at", params={"latitude": 95, "longitude": 0})).status_code == 422
-    assert (await anon_client.get(f"{API}/searches/zip-at", params={"latitude": 33.4, "longitude": -84.57})).status_code == 401
+    # Guests can look up the ZIP code at their location too (map service only, no listing requests).
+    assert (await anon_client.get(f"{API}/searches/zip-at", params={"latitude": 33.4, "longitude": -84.57})).json()["zip_code"] == "30269"
+
+
+async def test_place_suggestions_and_city_zip_codes(client, anon_client):
+    places = (await anon_client.get(f"{API}/searches/places", params={"q": "atl"})).json()
+    assert places[0]["kind"] == "place" and places[0]["label"] == "Atlanta, GA"
+    zips = (await anon_client.get(f"{API}/searches/places", params={"q": "3026"})).json()
+    assert zips[0] == {**zips[0], "kind": "postcode", "zip_code": "30269", "label": "30269 · Peachtree City, GA"}
+    assert (await anon_client.get(f"{API}/searches/places", params={"q": "a"})).status_code == 422
+
+    atlanta = places[0]
+    body = {"name": atlanta["name"], "region": atlanta["region"], "latitude": atlanta["latitude"], "longitude": atlanta["longitude"], "bbox": atlanta["bbox"]}
+    found = (await client.post(f"{API}/searches/place-zips", json=body)).json()
+    assert found["place"] == "Atlanta, GA" and set(found["zip_codes"]) == {"30310", "30315", "30318", "30331"}
+    assert found["max_zips"] == 10 and found["searches_left"] is None  # administrators have no limit
+    guest = (await anon_client.post(f"{API}/searches/place-zips", json=body)).json()
+    assert guest["zip_codes"] == found["zip_codes"] and guest["new_zip_codes"] == found["zip_codes"]
+    nowhere = (await client.post(f"{API}/searches/place-zips", json={**body, "name": "Nowhere"})).json()
+    assert nowhere["zip_codes"] == [] and "No ZIP codes" in nowhere["message"]
+
+    # A city search names the city and the ZIP codes picked from it (up to 10).
+    job = await run_search(client, {"zip_codes": ["30310", "30315"], "place": "Atlanta, GA"})
+    assert (await results(client, job["id"]))["total"] > 0
+    many = [f"{30200 + i:05d}" for i in range(11)]
+    response = await client.post(f"{API}/searches/run", json={"filters": {"zip_codes": many, "place": "Atlanta, GA"}})
+    assert response.json()["error"]["code"] == "area_too_large"
 
 
 PEACHTREE_AREA = [[-84.62, 33.36], [-84.52, 33.36], [-84.52, 33.44], [-84.62, 33.44]]

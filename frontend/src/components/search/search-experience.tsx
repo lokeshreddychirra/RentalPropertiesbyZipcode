@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, BookmarkPlus, ChevronLeft, ChevronRight, GitCompareArrows, Info, LayoutGrid, Lock, Map as MapIcon, RefreshCw, Search, SearchX, Sparkles, Table2, X } from "@/components/ui/icons";
+import { ArrowUp, BookmarkPlus, ChevronLeft, ChevronRight, GitCompareArrows, Info, LayoutGrid, Loader, LocateFixed, Lock, Map as MapIcon, RefreshCw, Search, SearchX, Sparkles, Table2, X } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { MapView } from "@/components/map/map-view";
 import { ConfidenceBadge, DemoTag, ScoreRing } from "@/components/property/bits";
@@ -13,7 +13,8 @@ import { Alert, Card, EmptyState, Skeleton, Table, Td, Th } from "@/components/u
 import { Field, Input, Select, Switch } from "@/components/ui/form";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/overlays";
 import { api, ApiError, errorMessage } from "@/lib/api";
-import { decodeFilters, describeFilters, SORT_OPTIONS } from "@/lib/filters";
+import { decodeFilters, describeFilters, SORT_OPTIONS, withDefaults } from "@/lib/filters";
+import { currentPosition, LocationError } from "@/lib/geo";
 import { MAX_COMPARE, useApp, useSession } from "@/lib/store";
 import type { PropertyCard as CardData, SearchFilters, SearchJob, SortKey, StrategyFilter } from "@/lib/types";
 import { cn, pct, ratio, relativeTime, signTone, usd } from "@/lib/utils";
@@ -471,19 +472,121 @@ function SearchZipHere({ zip, place, unlimited, onSearch }: { zip: string; place
   );
 }
 
+type Centre = { latitude: number; longitude: number; zoom?: number };
+/** Shown until the user's location is known (or when they decline to share it). */
+const FALLBACK_CENTRE: Centre = { latitude: 39.5, longitude: -96.5, zoom: 3.6 };
+/** Zoomed out further than this, the map covers too much to offer one ZIP code. */
+const MAX_SPAN_FOR_ZIP_DEG = 1.2;
+
+/**
+ * The dashboard map before any search: it opens at the user's location (or the place saved in
+ * Settings), offers the ZIP code at the centre of the map, and lets signed-in users draw an area.
+ */
+export function NearbyMap({ onSearch }: { onSearch: (filters: SearchFilters) => void }) {
+  const { searchDefaults, hydrated } = useApp();
+  const { user } = useSession();
+  const isAdmin = user?.role === "admin";
+  const savedPlace = searchDefaults.map_place ?? null;
+  const [centre, setCentre] = React.useState<Centre | null>(null);
+  const [you, setYou] = React.useState<{ latitude: number; longitude: number } | null>(null);
+  const [locating, setLocating] = React.useState(false);
+  const [note, setNote] = React.useState<string | null>(null);
+  const [view, setView] = React.useState<{ latitude: number; longitude: number; span: number } | null>(null);
+
+  const locate = React.useCallback(async () => {
+    setLocating(true);
+    try {
+      const here = await currentPosition();
+      setYou(here);
+      setCentre({ ...here, zoom: 12 });
+      setNote(null);
+    } catch (error) {
+      setNote(error instanceof LocationError ? error.message : "Your location could not be found right now.");
+      setCentre((current) => current ?? FALLBACK_CENTRE);
+    } finally {
+      setLocating(false);
+    }
+  }, []);
+
+  // Start at the place saved in Settings, otherwise at the user's current location.
+  const started = React.useRef(false);
+  React.useEffect(() => {
+    if (!hydrated || started.current) return;
+    started.current = true;
+    if (savedPlace) setCentre({ latitude: savedPlace.latitude, longitude: savedPlace.longitude, zoom: 12 });
+    else void locate();
+  }, [hydrated, savedPlace, locate]);
+
+  const key = view && view.span <= MAX_SPAN_FOR_ZIP_DEG ? [view.latitude.toFixed(3), view.longitude.toFixed(3)] : null;
+  const zipHere = useQuery({
+    queryKey: ["zip-at", ...(key ?? [])],
+    queryFn: () => api.zipAt(Number(key![0]), Number(key![1])),
+    enabled: !!key,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const defaults = searchDefaults.filters as Partial<SearchFilters> | undefined;
+  const search = (filters: SearchFilters) => onSearch(withDefaults(filters, defaults));
+  const zip = key ? zipHere.data?.zip_code : null;
+
+  const overlay = !view ? null : !key ? (
+    <span className="rounded-full bg-card/95 px-3 py-1.5 text-xs text-muted-foreground shadow">Zoom in to search a ZIP code on the map</span>
+  ) : zip ? (
+    <SearchZipHere zip={zip} place={zipHere.data?.place ?? null} unlimited={isAdmin || !user} onSearch={() => search({ zip_codes: [zip], strategy: "ltr" })} />
+  ) : zipHere.isFetching ? (
+    <span className="rounded-full bg-card/95 px-3 py-1.5 text-xs text-muted-foreground shadow">Finding the ZIP code here…</span>
+  ) : null;
+
+  return (
+    <div className="relative" data-testid="nearby-map">
+      <MapView
+        className="h-[52vh] min-h-[360px] lg:h-[560px]"
+        points={[]}
+        center={centre ?? FALLBACK_CENTRE}
+        you={you}
+        onBoundsChange={(bounds) => {
+          const [west, south, east, north] = bounds;
+          setView({ latitude: (south + north) / 2, longitude: (west + east) / 2, span: Math.max(east - west, north - south) });
+        }}
+        overlay={overlay}
+        allowDraw={!!user}
+        areaZipLimit={AREA_MAX_ZIPS}
+        pendingPanel={(shape, controls) => (
+          <AreaSearchPanel
+            shape={shape}
+            unlimited={isAdmin}
+            onRedraw={controls.redraw}
+            onCancel={controls.cancel}
+            onSearch={(zips) => search({ zip_codes: zips, polygon: shape, strategy: "ltr" })}
+          />
+        )}
+      />
+      <div className="absolute bottom-3 left-3 flex flex-col items-start gap-2">
+        {note ? <p className="max-w-[260px] rounded-md bg-card/95 px-2.5 py-1.5 text-[11px] text-muted-foreground shadow">{note}</p> : null}
+        <Button size="sm" variant="outline" className="shadow" onClick={() => void locate()} disabled={locating} data-testid="map-locate">
+          {locating ? <Loader className="animate-spin motion-reduce:animate-none" /> : <LocateFixed />} {locating ? "Finding you…" : "My location"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function SearchExperience({ basePath, defaultView = "list", heading, idle }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const { defaultsOrNull, weights, hydrated } = useApp();
+  const { defaultsOrNull, weights, hydrated, searchDefaults } = useApp();
   const { user, loading: sessionLoading } = useSession();
+  // Sort order and view saved in Settings apply unless the link says otherwise.
+  const defaultSort = (searchDefaults.sort as SortKey | undefined) ?? "score";
+  const startView = (searchDefaults.view as View | undefined) ?? defaultView;
   const isAdmin = user?.role === "admin";
   const queryClient = useQueryClient();
 
   const rawFilters = params.get("f");
   const filters = React.useMemo(() => decodeFilters(rawFilters), [rawFilters]);
-  const sort = (params.get("sort") as SortKey) || "score";
-  const view = toView(params.get("view"), defaultView);
+  const sort = (params.get("sort") as SortKey) || defaultSort;
+  const view = toView(params.get("view"), startView);
   const page = Math.max(1, Number(params.get("page") ?? "1") || 1);
   const strategy: StrategyFilter = (filters?.strategy as StrategyFilter) ?? "both";
 
@@ -504,12 +607,12 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
         search.delete("page");
       }
       if (next.sort !== undefined) {
-        if (next.sort && next.sort !== "score") search.set("sort", next.sort);
+        if (next.sort && next.sort !== defaultSort) search.set("sort", next.sort);
         else search.delete("sort");
         search.delete("page");
       }
       if (next.view !== undefined) {
-        if (next.view && next.view !== defaultView) search.set("view", next.view);
+        if (next.view && next.view !== startView) search.set("view", next.view);
         else search.delete("view");
       }
       if (next.page !== undefined) {
@@ -520,7 +623,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
       if (replace) router.replace(url, { scroll: false });
       else router.push(url, { scroll: false });
     },
-    [params, pathname, basePath, router, defaultView],
+    [params, pathname, basePath, router, defaultSort, startView],
   );
 
   // Reset map-scoped filters when the search itself changes.
@@ -688,12 +791,12 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
         const [west, south, east, north] = bounds;
         setMapCentre(byUser ? { latitude: (south + north) / 2, longitude: (west + east) / 2 } : null);
       }}
-      overlay={nearbyZip ? <SearchZipHere zip={nearbyZip.zip_code} place={nearbyZip.place} unlimited={isAdmin} onSearch={() => navigate({ filters: { ...(filters as SearchFilters), zip_codes: [nearbyZip.zip_code], polygon: null } })} /> : null}
+      overlay={nearbyZip ? <SearchZipHere zip={nearbyZip.zip_code} place={nearbyZip.place} unlimited={isAdmin} onSearch={() => navigate({ filters: { ...(filters as SearchFilters), zip_codes: [nearbyZip.zip_code], polygon: null, place: null } })} /> : null}
       polygon={drawnArea}
       onPolygonChange={(polygon) => {
         // Only "Clear area" calls this; drawn shapes are searched through the area panel below.
         if (polygon || !filters) return;
-        navigate({ filters: { ...filters, polygon: null, zip_codes: (filters.zip_codes ?? []).slice(0, 1) } });
+        navigate({ filters: { ...filters, polygon: null, place: null, zip_codes: (filters.zip_codes ?? []).slice(0, 1) } });
       }}
       areaZipLimit={AREA_MAX_ZIPS}
       pendingPanel={(shape, controls) => (
@@ -706,7 +809,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
             // Keep the ZIP codes already searched first, so "Clear area" returns to the original one.
             const current = (filters?.zip_codes ?? []).filter((z) => zips.includes(z));
             const ordered = [...current, ...zips.filter((z) => !current.includes(z))];
-            navigate({ filters: { ...(filters as SearchFilters), zip_codes: ordered, polygon: shape } });
+            navigate({ filters: { ...(filters as SearchFilters), zip_codes: ordered, polygon: shape, place: null } });
           }}
         />
       )}
@@ -763,6 +866,7 @@ export function SearchExperience({ basePath, defaultView = "list", heading, idle
                 {data ? `${data.total.toLocaleString()} ${data.total === 1 ? "property" : "properties"}${loadingMore || (pendingUpdate && !refreshedUpdate) ? " so far" : ""}` : "Loading results…"}
               </h2>
               <p className="caption-5 text-muted-foreground">
+                {filters?.place ? `${filters.place} · ZIP ${(filters.zip_codes ?? []).join(", ")} · ` : ""}
                 Ranked by calculated returns
                 {finished && !job.refreshing && latestVersion === shownVersion && job.data_as_of && job.data_mode !== "demo" ? ` · listings as of ${relativeTime(job.data_as_of)}` : ""}
                 {isAdmin ? (

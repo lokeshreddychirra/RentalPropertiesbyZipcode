@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Response
 from pydantic import BaseModel, EmailStr, Field
@@ -21,6 +21,7 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.finance.scoring import ScoreWeights
 from app.models.tables import User, UserPreference
 from app.schemas.analysis import AssumptionOverrides
+from app.schemas.search import DefaultFilters, SortKey
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -52,12 +53,42 @@ class NotificationSettings(BaseModel):
     in_app_alerts: bool = True
 
 
+class MapPlace(BaseModel):
+    label: str = Field(min_length=1, max_length=80)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class SearchDefaults(BaseModel):
+    """Applied to every new search: filters (price, beds, returns…), how results are sorted and shown,
+    and where the dashboard map starts (None = the user's current location)."""
+
+    filters: DefaultFilters | None = None  # location fields sent here are ignored
+    sort: SortKey | None = None
+    view: Literal["list", "map", "table"] | None = None
+    map_place: MapPlace | None = None
+
+
 class Preferences(BaseModel):
     """Omitted fields are left unchanged on update."""
 
     default_assumptions: AssumptionOverrides | None = None  # type: ignore[valid-type]
     score_weights: ScoreWeights | None = None
     notification_settings: NotificationSettings | None = None
+    search_defaults: SearchDefaults | None = None
+
+
+def _clean_search_defaults(value: SearchDefaults | None) -> dict[str, Any]:
+    if value is None:
+        return {}
+    out = value.model_dump(mode="json", exclude_none=True)
+    if value.filters is not None:
+        filters = value.filters.model_dump(mode="json", exclude_defaults=True)
+        if filters:
+            out["filters"] = filters
+        else:
+            out.pop("filters", None)
+    return out
 
 
 def _user_out(user: User) -> UserOut:
@@ -128,6 +159,7 @@ def _preferences(row: UserPreference | None) -> Preferences:
             "default_assumptions": row.default_assumptions or None,
             "score_weights": row.score_weights or None,
             "notification_settings": row.notification_settings or {},
+            "search_defaults": row.search_defaults or None,
         }
     )
 
@@ -140,10 +172,10 @@ async def get_preferences(user: CurrentUser, session: Session) -> Any:
 @router.put("/preferences", response_model=Preferences)
 async def put_preferences(body: Preferences, user: CurrentUser, session: Session) -> Preferences:
     """Update saved defaults. Only the fields present in the request are changed;
-    send `null` for `default_assumptions` or `score_weights` to clear them."""
+    send `null` for `default_assumptions`, `score_weights` or `search_defaults` to clear them."""
     row = await session.get(UserPreference, user.id)
     if row is None:
-        row = UserPreference(user_id=user.id, default_assumptions={}, score_weights={}, notification_settings={})
+        row = UserPreference(user_id=user.id, default_assumptions={}, score_weights={}, notification_settings={}, search_defaults={})
         session.add(row)
     sent = body.model_fields_set
     if "default_assumptions" in sent:
@@ -152,5 +184,7 @@ async def put_preferences(body: Preferences, user: CurrentUser, session: Session
         row.score_weights = body.score_weights.model_dump(mode="json") if body.score_weights else {}
     if "notification_settings" in sent and body.notification_settings is not None:
         row.notification_settings = body.notification_settings.model_dump()
+    if "search_defaults" in sent:
+        row.search_defaults = _clean_search_defaults(body.search_defaults)
     await session.flush()
     return _preferences(row)

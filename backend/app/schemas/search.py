@@ -43,6 +43,27 @@ Pct = Annotated[Num, Field(ge=-100, le=1000)]
 Price = Annotated[Num, Field(ge=0, le=100_000_000)]
 
 
+class DefaultFilters(BaseModel):
+    """Filters a user applies to every new search (set on the Settings page). No location: each search names its own."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    min_price: Price | None = None
+    max_price: Price | None = None
+    min_gross_yield: Pct | None = None
+    min_net_yield: Pct | None = None
+    min_cap_rate: Pct | None = None
+    min_cash_on_cash: Pct | None = None
+    min_cash_flow: Annotated[Num, Field(ge=-100000, le=1000000)] | None = None
+    min_beds: Annotated[int, Field(ge=0, le=20)] | None = None
+    max_beds: Annotated[int, Field(ge=0, le=20)] | None = None
+    property_types: list[PropertyType] = Field(default_factory=list)
+    max_hoa: Price | None = None
+    max_days_on_market: Annotated[int, Field(ge=0, le=3650)] | None = None
+    min_year_built: Annotated[int, Field(ge=1700, le=2100)] | None = None
+    max_year_built: Annotated[int, Field(ge=1700, le=2100)] | None = None
+
+
 class SearchFilters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -52,6 +73,7 @@ class SearchFilters(BaseModel):
     county: str | None = Field(default=None, max_length=80, description="County name (requires `state`)")
     radius_miles: Annotated[float, Field(gt=0, le=100)] | None = None
     polygon: list[tuple[float, float]] | None = Field(default=None, description="Search area as [longitude, latitude] vertices")
+    place: str | None = Field(default=None, max_length=80, description='City the ZIP codes were chosen from, e.g. "Peachtree City, GA" (a label only)')
     min_price: Price | None = None
     max_price: Price | None = None
     min_gross_yield: Pct | None = None

@@ -602,3 +602,46 @@ async def test_mapbox_reverse_lookup_reads_the_zip_and_place():
         await geocoder.aclose()
     assert seen == {"path": "/search/geocode/v6/reverse", "types": "postcode"}
     assert hit is not None and hit.zip_code == "30214" and hit.place == "Fayetteville, GA"
+
+
+async def test_mapbox_suggestions_read_cities_and_zip_codes():
+    from app.providers.mapbox import MapboxGeocoder
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(types=request.url.params.get("types"), autocomplete=request.url.params.get("autocomplete"))
+        city = {
+            "geometry": {"coordinates": [-84.58, 33.39]},
+            "properties": {"feature_type": "place", "name": "Peachtree City", "bbox": [-84.62, 33.33, -84.52, 33.44], "context": {"region": {"region_code": "GA"}}},
+        }
+        postcode = {
+            "geometry": {"coordinates": [-84.57, 33.40]},
+            "properties": {"feature_type": "postcode", "name": "30269", "context": {"place": {"name": "Peachtree City"}, "region": {"region_code": "GA"}}},
+        }
+        return httpx.Response(200, json={"features": [city, postcode, {"properties": {"feature_type": "region"}, "geometry": {"coordinates": [0, 0]}}]})
+
+    geocoder = MapboxGeocoder(Settings(mapbox_access_token="pk.test"), transport=httpx.MockTransport(handler))
+    try:
+        hits = await geocoder.suggest("peachtree")
+    finally:
+        await geocoder.aclose()
+    assert seen == {"types": "place,postcode", "autocomplete": "true"}
+    assert [(h.kind, h.label) for h in hits] == [("place", "Peachtree City, GA"), ("postcode", "30269 · Peachtree City, GA")]
+    assert hits[0].bbox == (-84.62, 33.33, -84.52, 33.44) and hits[1].zip_code == "30269"
+
+
+async def test_city_zip_codes_keep_only_the_city_and_order_by_coverage():
+    from app.providers.base import ZipAtPoint
+    from app.services.area import zips_in_place
+
+    class Grid:
+        key = "fake"
+
+        async def zip_at(self, latitude, longitude):
+            if longitude < -84.60:
+                return ZipAtPoint(zip_code="30214", place="Fayetteville, GA")  # a neighbouring town
+            return ZipAtPoint(zip_code="30269" if latitude < 33.42 else "30270", place="Peachtree City, GA")
+
+    found = await zips_in_place(Grid(), name="Peachtree City", region="GA", latitude=33.39, longitude=-84.57, bbox=(-84.63, 33.34, -84.51, 33.44))
+    assert found.zip_codes == ["30269", "30270"]

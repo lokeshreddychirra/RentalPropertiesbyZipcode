@@ -4,7 +4,7 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError } from "./api";
-import type { Account, AssumptionOverrides, AssumptionSection, PropertyCard, ScoreWeights, SessionOut, SystemStatus, User } from "./types";
+import type { Account, AssumptionOverrides, AssumptionSection, PropertyCard, ScoreWeights, SearchDefaults, SessionOut, SystemStatus, User } from "./types";
 
 // ----------------------------------------------------------------------------- local persistence
 
@@ -40,6 +40,10 @@ interface AppState {
   setDefault: (section: AssumptionSection, field: string, value: number | null) => void;
   resetDefaults: () => void;
   setWeights: (weights: ScoreWeights | null) => void;
+  /** Settings page: default filters, sort, view and map start for every new search. */
+  searchDefaults: SearchDefaults;
+  /** Save everything on the Settings page at once (and to the account when signed in). */
+  saveSettings: (next: { searchDefaults: SearchDefaults; defaults: AssumptionOverrides; weights: ScoreWeights | null }) => Promise<void>;
   /** null when nothing is customised, so API requests stay minimal and cache-friendly. */
   defaultsOrNull: AssumptionOverrides | null;
   compare: CompareItem[];
@@ -62,8 +66,24 @@ function prune(defaults: AssumptionOverrides): AssumptionOverrides {
   return out as AssumptionOverrides;
 }
 
+/** Drops empty values so "nothing set" stays an empty object. */
+function pruneSearch(value: SearchDefaults | null | undefined): SearchDefaults {
+  const out: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(value ?? {})) {
+    if (field === null || field === undefined) continue;
+    if (key === "filters") {
+      const filters = Object.fromEntries(
+        Object.entries(field as Record<string, unknown>).filter(([, v]) => v !== null && v !== undefined && !(Array.isArray(v) && !v.length)),
+      );
+      if (Object.keys(filters).length) out.filters = filters;
+    } else out[key] = field;
+  }
+  return out as SearchDefaults;
+}
+
 function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [defaults, setDefaults] = React.useState<AssumptionOverrides>({});
+  const [searchDefaults, setSearchDefaults] = React.useState<SearchDefaults>({});
   const [weights, setWeightsState] = React.useState<ScoreWeights | null>(null);
   const [compare, setCompare] = React.useState<CompareItem[]>([]);
   const [hydrated, setHydrated] = React.useState(false);
@@ -75,6 +95,7 @@ function AppStateProvider({ children }: { children: React.ReactNode }) {
     setDefaults(readLocal<AssumptionOverrides>("py.defaults", {}));
     setWeightsState(readLocal<ScoreWeights | null>("py.weights", null));
     setCompare(readLocal<CompareItem[]>("py.compare", []));
+    setSearchDefaults(pruneSearch(readLocal<SearchDefaults>("py.search", {})));
     setHydrated(true);
   }, []);
 
@@ -93,6 +114,11 @@ function AppStateProvider({ children }: { children: React.ReactNode }) {
         if (prefs.score_weights) {
           setWeightsState(prefs.score_weights);
           writeLocal("py.weights", prefs.score_weights);
+        }
+        if (prefs.search_defaults) {
+          const next = pruneSearch(prefs.search_defaults);
+          setSearchDefaults(next);
+          writeLocal("py.search", next);
         }
       })
       .catch(() => undefined);
@@ -130,6 +156,24 @@ function AppStateProvider({ children }: { children: React.ReactNode }) {
         setWeightsState(next);
         persist(pruned, next);
       },
+      searchDefaults,
+      saveSettings: async (next) => {
+        const nextDefaults = prune(next.defaults);
+        const nextSearch = pruneSearch(next.searchDefaults);
+        setDefaults(nextDefaults);
+        setWeightsState(next.weights);
+        setSearchDefaults(nextSearch);
+        writeLocal("py.defaults", nextDefaults);
+        writeLocal("py.weights", next.weights);
+        writeLocal("py.search", nextSearch);
+        if (userId) {
+          await api.savePreferences({
+            default_assumptions: nextDefaults,
+            score_weights: next.weights,
+            search_defaults: Object.keys(nextSearch).length ? nextSearch : null,
+          });
+        }
+      },
       compare,
       isCompared: (id) => compare.some((item) => item.id === id),
       toggleCompare: (card) => {
@@ -155,7 +199,7 @@ function AppStateProvider({ children }: { children: React.ReactNode }) {
         writeLocal("py.compare", []);
       },
     };
-  }, [defaults, weights, compare, hydrated, persist]);
+  }, [defaults, weights, searchDefaults, compare, hydrated, persist, userId]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

@@ -305,6 +305,19 @@ class ZipAtPoint(BaseModel):
     place: str | None = None  # e.g. "Fayetteville, GA"
 
 
+class PlaceSuggestion(BaseModel):
+    """A city or ZIP code matching what the user is typing in the search box."""
+
+    kind: Literal["place", "postcode"]
+    label: str  # "Peachtree City, GA" or "30269 · Peachtree City, GA"
+    name: str  # "Peachtree City" or "30269"
+    region: str | None = None  # 2-letter state code
+    zip_code: str | None = None
+    latitude: float
+    longitude: float
+    bbox: tuple[float, float, float, float] | None = None  # west, south, east, north
+
+
 class SubjectProperty(BaseModel):
     """What an estimate provider needs to know about the home being valued."""
 
@@ -382,3 +395,5 @@ class Geocoder(Protocol):
     async def geocode(self, query: str, *, kinds: tuple[str, ...] = ()) -> GeocodeResult | None: ...
 
     async def zip_at(self, latitude: float, longitude: float) -> ZipAtPoint | None: ...
+
+    async def suggest(self, query: str, *, limit: int = 5) -> list[PlaceSuggestion]: ...

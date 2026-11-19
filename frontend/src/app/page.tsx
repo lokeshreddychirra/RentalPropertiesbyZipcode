@@ -2,15 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Reveal, TaglineReveal } from "@/components/marketing/reveal";
-import { SearchExperience } from "@/components/search/search-experience";
+import { NearbyMap, SearchExperience } from "@/components/search/search-experience";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/card";
 import { ArrowRight, Bookmark, ChevronDown, Gauge, LineChart, MapPin, Search, ShieldAlert, SlidersHorizontal } from "@/components/ui/icons";
 import { api } from "@/lib/api";
-import { describeFilters, searchHref } from "@/lib/filters";
-import { useSession, useStatus } from "@/lib/store";
+import { describeFilters, searchHref, withDefaults } from "@/lib/filters";
+import { useApp, useSession, useStatus } from "@/lib/store";
 import type { SearchFilters } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -40,7 +41,7 @@ const BENEFITS: { icon: React.ComponentType<{ className?: string }>; title: stri
 ];
 
 const STEPS: { icon: React.ComponentType<{ className?: string }>; title: string; body: string }[] = [
-  { icon: Search, title: "Enter a ZIP code", body: "Any US ZIP code. We pull every home for sale there and the rents around it." },
+  { icon: Search, title: "Enter a ZIP code or city", body: "Any US ZIP code or city, or just use your location. We pull every home for sale there and the rents around it." },
   { icon: LineChart, title: "See the best deals first", body: "Each home gets a rent estimate, its running costs, a mortgage and a score out of 100." },
   { icon: SlidersHorizontal, title: "Make it your deal", body: "Open any home and change the price, down payment, rate and rent. Your returns update as you type." },
 ];
@@ -89,7 +90,7 @@ function Hero({ compact }: { compact: boolean }) {
 /** Hero messages, rotating above the search box. The first one is the page's real headline. */
 const HERO_MESSAGES: { lead: string; punch: string; body: string }[] = [
   {
-    lead: "Type a ZIP code.",
+    lead: "Type a ZIP code or city.",
     punch: "See which homes pay you every month.",
     body: "We run the numbers on every home for sale there as a long term rental and rank them by the cash they leave in your pocket.",
   },
@@ -204,6 +205,9 @@ function QuickStart() {
   const starters = status?.data_mode === "demo" ? DEMO_STARTERS : LIVE_STARTERS;
   const guest = !loading && !user;
   const free = useFreeSearches();
+  const router = useRouter();
+  const { searchDefaults } = useApp();
+  const defaults = searchDefaults.filters as Partial<SearchFilters> | undefined;
 
   return (
     <div className="space-y-16 pt-2">
@@ -235,7 +239,7 @@ function QuickStart() {
           {starters.map((starter) => (
             <Link
               key={starter.label}
-              href={searchHref(starter.filters, { sort: starter.sort, base: "/" })}
+              href={searchHref(withDefaults(starter.filters, defaults), { sort: starter.sort, base: "/" })}
               className="tilt-card glass group flex items-center gap-3 rounded-xl px-4 py-3"
             >
               <span className="btn-brand flex size-10 shrink-0 items-center justify-center rounded-full">
@@ -249,6 +253,19 @@ function QuickStart() {
             </Link>
           ))}
         </div>
+      </section>
+
+      <section className="space-y-4" aria-labelledby="map-title">
+        <div className="max-w-[680px]">
+          <h2 id="map-title" className="heading-5 text-balance">
+            Or search on the map
+          </h2>
+          <p className="body-6 mt-1 text-pretty text-muted-foreground">
+            The map opens where you are. Move it to any neighbourhood and search the ZIP code in the middle
+            {user ? ", or draw an area to search up to 10 ZIP codes at once" : ""}.
+          </p>
+        </div>
+        <NearbyMap onSearch={(filters) => router.push(searchHref(filters, { base: "/" }), { scroll: true })} />
       </section>
 
       <Reveal className="space-y-4" aria-labelledby="benefits-title">

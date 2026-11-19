@@ -11,7 +11,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, Session, rate_limit
+from app.api.deps import CurrentUser, OptionalUser, Session, rate_limit
 from app.core.errors import AppError, NotFoundError
 from app.models.tables import SavedSearch
 from app.providers.base import BudgetExceeded, ProviderError
@@ -120,11 +120,11 @@ class ZipAtOut(BaseModel):
 
 @router.get("/zip-at", response_model=ZipAtOut, dependencies=[rate_limit("zip-at", 60, 60)])
 async def zip_at(
-    user: CurrentUser,
+    user: OptionalUser,
     latitude: Annotated[float, Query(ge=-90, le=90)],
     longitude: Annotated[float, Query(ge=-180, le=180)],
 ) -> ZipAtOut:
-    """The ZIP code under a point on the results map, so the user can search the next ZIP over.
+    """The ZIP code under a point on the map (or the user's current location), so it can be searched.
 
     Uses the geocoder only (no listing provider requests). Answers with no ZIP when none is found or
     no geocoder is configured.
@@ -179,6 +179,69 @@ async def area_zips(body: AreaZipsIn, user: CurrentUser, session: Session) -> Ar
         return AreaZipsOut(span_miles=found.span_miles, message=message)
     new, left = await plans.zip_allowance(session, user, found.zip_codes)
     return AreaZipsOut(zip_codes=found.zip_codes, span_miles=found.span_miles, new_searches=new, searches_left=left)
+
+
+class PlaceOut(BaseModel):
+    kind: str
+    label: str
+    name: str
+    region: str | None = None
+    zip_code: str | None = None
+    latitude: float
+    longitude: float
+    bbox: tuple[float, float, float, float] | None = None
+
+
+@router.get("/places", response_model=list[PlaceOut], dependencies=[rate_limit("places", 90, 60)])
+async def suggest_places(user: OptionalUser, q: Annotated[str, Query(min_length=2, max_length=80)]) -> list[PlaceOut]:
+    """Cities and ZIP codes matching what the user is typing (geocoder only, no listing requests)."""
+    geocoder = get_providers().geocoder
+    if geocoder is None:
+        return []
+    try:
+        hits = await geocoder.suggest(q.strip(), limit=6)
+    except (ProviderError, BudgetExceeded):
+        return []
+    return [PlaceOut(**hit.model_dump()) for hit in hits]
+
+
+class PlaceZipsIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    region: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    bbox: tuple[float, float, float, float] | None = None
+
+
+class PlaceZipsOut(BaseModel):
+    place: str
+    zip_codes: list[str] = []
+    max_zips: int = plans.AREA_MAX_ZIPS
+    new_zip_codes: list[str] = []
+    searches_left: int | None = None
+    message: str | None = None
+
+
+@router.post("/place-zips", response_model=PlaceZipsOut, dependencies=[rate_limit("place-zips", 20, 60)])
+async def place_zips(body: PlaceZipsIn, user: OptionalUser, session: Session) -> PlaceZipsOut:
+    """The ZIP codes of a city, most covered first, and which of them would be new ZIP searches for the user.
+
+    Uses the geocoder only (no listing provider requests). A search can cover up to ``max_zips`` of them.
+    """
+    place = f"{body.name}, {body.region.upper()}" if body.region else body.name
+    geocoder = get_providers().geocoder
+    if geocoder is None:
+        return PlaceZipsOut(place=place, message="City search needs the map service, which is not configured. Search by ZIP code instead.")
+    found = await area_service.zips_in_place(
+        geocoder, name=body.name, region=body.region.upper() if body.region else None, latitude=body.latitude, longitude=body.longitude, bbox=body.bbox
+    )
+    if not found.zip_codes:
+        message = "The map service could not be reached. Try again in a moment." if found.lookup_failed else f"No ZIP codes were found for {place}."
+        return PlaceZipsOut(place=place, message=message)
+    if user is None:
+        return PlaceZipsOut(place=place, zip_codes=found.zip_codes, new_zip_codes=found.zip_codes)
+    new_zips, left = await plans.new_zips(session, user, found.zip_codes)
+    return PlaceZipsOut(place=place, zip_codes=found.zip_codes, new_zip_codes=new_zips, searches_left=left)
 
 
 @router.post("/parse", response_model=NLParseResult, dependencies=[rate_limit("nl", 30, 60)])

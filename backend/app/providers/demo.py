@@ -28,6 +28,7 @@ from .base import (
     ListingRecord,
     MarketHistoryPoint,
     MarketStats,
+    PlaceSuggestion,
     PriceEvent,
     RentEstimateRecord,
     StrEstimateRecord,
@@ -453,6 +454,43 @@ class DemoProvider:
         if haversine_miles(latitude, longitude, nearest.latitude, nearest.longitude) > 8:
             return None
         return ZipAtPoint(zip_code=nearest.zip_code, place=f"{nearest.city}, {nearest.state}")
+
+    async def suggest(self, query: str, *, limit: int = 5) -> list[PlaceSuggestion]:
+        """Demo cities and ZIP codes starting with what was typed."""
+        text = query.strip().lower()
+        if not text:
+            return []
+        out: list[PlaceSuggestion] = []
+        if text.isdigit():
+            for m in MARKETS:
+                if m.zip_code.startswith(text):
+                    out.append(
+                        PlaceSuggestion(
+                            kind="postcode", label=f"{m.zip_code} · {m.city}, {m.state}", name=m.zip_code, region=m.state,
+                            zip_code=m.zip_code, latitude=m.latitude, longitude=m.longitude,
+                        )
+                    )
+            return out[:limit]
+        city_part = text.split(",")[0].strip()
+        seen: dict[tuple[str, str], list[DemoMarket]] = {}
+        for m in MARKETS:
+            if m.city.lower().startswith(city_part):
+                seen.setdefault((m.city, m.state), []).append(m)
+        for (city, state), markets in seen.items():
+            lats = [m.latitude for m in markets]
+            lngs = [m.longitude for m in markets]
+            out.append(
+                PlaceSuggestion(
+                    kind="place", label=f"{city}, {state}", name=city, region=state,
+                    latitude=sum(lats) / len(lats), longitude=sum(lngs) / len(lngs),
+                    bbox=(min(lngs) - 0.05, min(lats) - 0.05, max(lngs) + 0.05, max(lats) + 0.05),
+                )
+            )
+        return out[:limit]
+
+    async def zips_in_place(self, name: str, region: str | None) -> list[str]:
+        """Demo ZIP codes of a city (the demo has no map service to sample)."""
+        return [m.zip_code for m in MARKETS if m.city.lower() == name.lower() and (region is None or m.state == region.upper())]
 
     async def geocode(self, query: str, *, kinds: tuple[str, ...] = ()) -> GeocodeResult | None:
         text = query.strip().lower()

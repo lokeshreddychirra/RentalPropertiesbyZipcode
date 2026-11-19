@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Menu, Moon, Search, Sun, TrendingUp, User as UserIcon, Users } from "@/components/ui/icons";
+import { Bell, Bookmark, Building2, CreditCard, GitCompareArrows, LayoutDashboard, LogOut, Menu, Moon, Search, Settings, Sun, TrendingUp, User as UserIcon, Users } from "@/components/ui/icons";
 import { AppRuntime } from "@/components/layout/app-runtime";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/card";
@@ -19,6 +19,7 @@ const NAV: { href: string; label: string; icon: typeof Search; access: Access }[
   { href: "/compare", label: "Property Comparison", icon: GitCompareArrows, access: "everyone" },
   { href: "/saved", label: "Saved Properties", icon: Bookmark, access: "user" },
   { href: "/pricing", label: "Plans & Pricing", icon: CreditCard, access: "everyone" },
+  { href: "/settings", label: "Settings", icon: Settings, access: "everyone" },
   { href: "/admin/users", label: "Admin Portal", icon: Users, access: "admin" },
 ];
 

@@ -116,6 +116,8 @@ class UserPreference(Base):
     default_assumptions: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     score_weights: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     notification_settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    # Default search filters, sort, view and map start applied to every new search.
+    search_defaults: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     updated_at: Mapped[datetime] = _updated()
 
     user: Mapped[User] = relationship(back_populates="preferences")

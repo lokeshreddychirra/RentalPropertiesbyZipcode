@@ -84,7 +84,7 @@ export interface paths {
         /**
          * Put Preferences
          * @description Update saved defaults. Only the fields present in the request are changed;
-         *     send `null` for `default_assumptions` or `score_weights` to clear them.
+         *     send `null` for `default_assumptions`, `score_weights` or `search_defaults` to clear them.
          */
         put: operations["put_preferences_api_v1_auth_preferences_put"];
         post?: never;
@@ -488,7 +488,7 @@ export interface paths {
         };
         /**
          * Zip At
-         * @description The ZIP code under a point on the results map, so the user can search the next ZIP over.
+         * @description The ZIP code under a point on the map (or the user's current location), so it can be searched.
          *
          *     Uses the geocoder only (no listing provider requests). Answers with no ZIP when none is found or
          *     no geocoder is configured.
@@ -519,6 +519,48 @@ export interface paths {
          *     more than ``max_zips`` ZIP codes, come back with ``too_large`` and a request to zoom in.
          */
         post: operations["area_zips_api_v1_searches_area_zips_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/searches/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggest Places
+         * @description Cities and ZIP codes matching what the user is typing (geocoder only, no listing requests).
+         */
+        get: operations["suggest_places_api_v1_searches_places_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/searches/place-zips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Place Zips
+         * @description The ZIP codes of a city, most covered first, and which of them would be new ZIP searches for the user.
+         *
+         *     Uses the geocoder only (no listing provider requests). A search can cover up to ``max_zips`` of them.
+         */
+        post: operations["place_zips_api_v1_searches_place_zips_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1673,6 +1715,74 @@ export interface components {
             /** Cost Usd */
             cost_usd: number;
         };
+        /**
+         * DefaultFilters
+         * @description Filters a user applies to every new search (set on the Settings page). No location: each search names its own.
+         */
+        "DefaultFilters-Input": {
+            /** Min Price */
+            min_price?: number | string | null;
+            /** Max Price */
+            max_price?: number | string | null;
+            /** Min Gross Yield */
+            min_gross_yield?: number | string | null;
+            /** Min Net Yield */
+            min_net_yield?: number | string | null;
+            /** Min Cap Rate */
+            min_cap_rate?: number | string | null;
+            /** Min Cash On Cash */
+            min_cash_on_cash?: number | string | null;
+            /** Min Cash Flow */
+            min_cash_flow?: number | string | null;
+            /** Min Beds */
+            min_beds?: number | null;
+            /** Max Beds */
+            max_beds?: number | null;
+            /** Property Types */
+            property_types?: ("single_family" | "condo" | "townhouse" | "multi_family" | "manufactured" | "apartment" | "land" | "other")[];
+            /** Max Hoa */
+            max_hoa?: number | string | null;
+            /** Max Days On Market */
+            max_days_on_market?: number | null;
+            /** Min Year Built */
+            min_year_built?: number | null;
+            /** Max Year Built */
+            max_year_built?: number | null;
+        };
+        /**
+         * DefaultFilters
+         * @description Filters a user applies to every new search (set on the Settings page). No location: each search names its own.
+         */
+        "DefaultFilters-Output": {
+            /** Min Price */
+            min_price?: number | null;
+            /** Max Price */
+            max_price?: number | null;
+            /** Min Gross Yield */
+            min_gross_yield?: number | null;
+            /** Min Net Yield */
+            min_net_yield?: number | null;
+            /** Min Cap Rate */
+            min_cap_rate?: number | null;
+            /** Min Cash On Cash */
+            min_cash_on_cash?: number | null;
+            /** Min Cash Flow */
+            min_cash_flow?: number | null;
+            /** Min Beds */
+            min_beds?: number | null;
+            /** Max Beds */
+            max_beds?: number | null;
+            /** Property Types */
+            property_types?: ("single_family" | "condo" | "townhouse" | "multi_family" | "manufactured" | "apartment" | "land" | "other")[];
+            /** Max Hoa */
+            max_hoa?: number | null;
+            /** Max Days On Market */
+            max_days_on_market?: number | null;
+            /** Min Year Built */
+            min_year_built?: number | null;
+            /** Max Year Built */
+            max_year_built?: number | null;
+        };
         /** ExpenseLine */
         ExpenseLine: {
             /** Key */
@@ -2304,6 +2414,15 @@ export interface components {
             /** Furnishing Cost */
             furnishing_cost?: number;
         };
+        /** MapPlace */
+        MapPlace: {
+            /** Label */
+            label: string;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+        };
         /** MapPoint */
         MapPoint: {
             /**
@@ -2443,6 +2562,72 @@ export interface components {
             /** Query */
             query: string;
         };
+        /** PlaceOut */
+        PlaceOut: {
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Name */
+            name: string;
+            /** Region */
+            region?: string | null;
+            /** Zip Code */
+            zip_code?: string | null;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Bbox */
+            bbox?: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+        };
+        /** PlaceZipsIn */
+        PlaceZipsIn: {
+            /** Name */
+            name: string;
+            /** Region */
+            region?: string | null;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Bbox */
+            bbox?: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+        };
+        /** PlaceZipsOut */
+        PlaceZipsOut: {
+            /** Place */
+            place: string;
+            /**
+             * Zip Codes
+             * @default []
+             */
+            zip_codes: string[];
+            /**
+             * Max Zips
+             * @default 10
+             */
+            max_zips: number;
+            /**
+             * New Zip Codes
+             * @default []
+             */
+            new_zip_codes: string[];
+            /** Searches Left */
+            searches_left?: number | null;
+            /** Message */
+            message?: string | null;
+        };
         /** PlanOut */
         PlanOut: {
             /** Key */
@@ -2514,6 +2699,7 @@ export interface components {
             default_assumptions?: components["schemas"]["AssumptionsOverrides-Input"] | null;
             score_weights?: components["schemas"]["ScoreWeights-Input"] | null;
             notification_settings?: components["schemas"]["NotificationSettings"] | null;
+            search_defaults?: components["schemas"]["SearchDefaults-Input"] | null;
         };
         /**
          * Preferences
@@ -2523,6 +2709,7 @@ export interface components {
             default_assumptions?: components["schemas"]["AssumptionsOverrides-Output"] | null;
             score_weights?: components["schemas"]["ScoreWeights-Output"] | null;
             notification_settings?: components["schemas"]["NotificationSettings"] | null;
+            search_defaults?: components["schemas"]["SearchDefaults-Output"] | null;
         };
         /** PriceEventOut */
         PriceEventOut: {
@@ -3397,6 +3584,32 @@ export interface components {
              */
             data_quality: number;
         };
+        /**
+         * SearchDefaults
+         * @description Applied to every new search: filters (price, beds, returns…), how results are sorted and shown,
+         *     and where the dashboard map starts (None = the user's current location).
+         */
+        "SearchDefaults-Input": {
+            filters?: components["schemas"]["DefaultFilters-Input"] | null;
+            /** Sort */
+            sort?: ("score" | "gross_yield" | "net_yield" | "cap_rate" | "cash_on_cash" | "cash_flow" | "upfront" | "dscr" | "ltr_return" | "str_return" | "price_asc" | "price_desc" | "newest") | null;
+            /** View */
+            view?: ("list" | "map" | "table") | null;
+            map_place?: components["schemas"]["MapPlace"] | null;
+        };
+        /**
+         * SearchDefaults
+         * @description Applied to every new search: filters (price, beds, returns…), how results are sorted and shown,
+         *     and where the dashboard map starts (None = the user's current location).
+         */
+        "SearchDefaults-Output": {
+            filters?: components["schemas"]["DefaultFilters-Output"] | null;
+            /** Sort */
+            sort?: ("score" | "gross_yield" | "net_yield" | "cap_rate" | "cash_on_cash" | "cash_flow" | "upfront" | "dscr" | "ltr_return" | "str_return" | "price_asc" | "price_desc" | "newest") | null;
+            /** View */
+            view?: ("list" | "map" | "table") | null;
+            map_place?: components["schemas"]["MapPlace"] | null;
+        };
         /** SearchFilters */
         "SearchFilters-Input": {
             /**
@@ -3429,6 +3642,11 @@ export interface components {
                 number,
                 number
             ][] | null;
+            /**
+             * Place
+             * @description City the ZIP codes were chosen from, e.g. "Peachtree City, GA" (a label only)
+             */
+            place?: string | null;
             /** Min Price */
             min_price?: number | string | null;
             /** Max Price */
@@ -3496,6 +3714,11 @@ export interface components {
                 number,
                 number
             ][] | null;
+            /**
+             * Place
+             * @description City the ZIP codes were chosen from, e.g. "Peachtree City, GA" (a label only)
+             */
+            place?: string | null;
             /** Min Price */
             min_price?: number | null;
             /** Max Price */
@@ -5115,6 +5338,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AreaZipsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_places_api_v1_searches_places_get: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_zips_api_v1_searches_place_zips_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceZipsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceZipsOut"];
                 };
             };
             /** @description Validation Error */

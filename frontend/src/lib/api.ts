@@ -13,6 +13,8 @@ import type {
   Meta,
   NLParseResult,
   NotificationList,
+  PlaceSuggestion,
+  PlaceZips,
   Preferences,
   PropertyAnalysis,
   PropertyDetail,
@@ -149,6 +151,9 @@ export const api = {
       "/searches/area-zips",
       { method: "POST", json: { polygon } },
     ),
+  places: (q: string, signal?: AbortSignal) => request<PlaceSuggestion[]>(`/searches/places${qs({ q })}`, { signal }),
+  placeZips: (place: Pick<PlaceSuggestion, "name" | "region" | "latitude" | "longitude" | "bbox">) =>
+    request<PlaceZips>("/searches/place-zips", { method: "POST", json: { name: place.name, region: place.region, latitude: place.latitude, longitude: place.longitude, bbox: place.bbox } }),
   zipAt: (latitude: number, longitude: number) => request<{ zip_code: string | null; place: string | null }>(`/searches/zip-at${qs({ latitude, longitude })}`),
   parseQuery: (query: string) => request<NLParseResult>("/searches/parse", { method: "POST", json: { query } }),
   saveSearch: (body: Record<string, unknown>) => request<SavedSearch>("/searches/save", { method: "POST", json: body }),

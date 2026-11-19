@@ -87,6 +87,10 @@ interface Props {
   pendingPanel?: (shape: LngLat[], controls: { redraw: () => void; cancel: () => void }) => React.ReactNode;
   /** When set, the drawing hint asks the user to zoom in if the map is zoomed far out. */
   areaZipLimit?: number;
+  /** Where to show the map when there are no results to fit (e.g. the user's location). */
+  center?: { latitude: number; longitude: number; zoom?: number } | null;
+  /** The user's own location, shown as a blue dot. */
+  you?: { latitude: number; longitude: number } | null;
 }
 
 /** Below this zoom level a drawn shape would usually cover far more than a handful of ZIP codes. */
@@ -119,7 +123,7 @@ const AREA_COLOR = "#3d7eff";
 
 type PointerEvt = { lngLat: { lng: number; lat: number }; point: { x: number; y: number } };
 
-export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChange, polygon, onPolygonChange, allowDraw = false, className, secondary = [], interactive = true, overlay, pendingPanel, areaZipLimit }: Props) {
+export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChange, polygon, onPolygonChange, allowDraw = false, className, secondary = [], interactive = true, overlay, pendingPanel, areaZipLimit, center, you }: Props) {
   const { lib, config } = useMapLibrary();
   const mapRef = React.useRef<import("react-map-gl/maplibre").MapRef | null>(null);
   const [view, setView] = React.useState<{ bounds: Bounds; zoom: number } | null>(null);
@@ -179,6 +183,19 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
     fit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey]);
+
+  // With no results to fit, follow the requested centre (the user's location or a saved place).
+  const centerKey = center ? `${center.latitude.toFixed(4)},${center.longitude.toFixed(4)},${center.zoom ?? ""}` : "";
+  const goToCenter = React.useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !center || points.length) return;
+    movedByUser.current = false;
+    map.jumpTo({ center: [center.longitude, center.latitude], zoom: center.zoom ?? 12 });
+  }, [center, points.length]);
+  React.useEffect(() => {
+    goToCenter();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [centerKey]);
 
   React.useEffect(() => {
     if (selectedId) setPopupId(selectedId);
@@ -271,7 +288,7 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
         {...(usingMapbox ? { mapboxAccessToken: config.mapboxToken as string } : {})}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         mapStyle={(usingMapbox ? config.mapStyle : OSM_STYLE) as any}
-        initialViewState={{ longitude: -84.39, latitude: 33.75, zoom: 9 }}
+        initialViewState={center && !points.length ? { longitude: center.longitude, latitude: center.latitude, zoom: center.zoom ?? 12 } : { longitude: -84.39, latitude: 33.75, zoom: 9 }}
         style={{ width: "100%", height: "100%" }}
         interactive={interactive}
         doubleClickZoom={!drawing}
@@ -282,6 +299,7 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
         cursor={drawing ? "crosshair" : undefined}
         onLoad={() => {
           fit();
+          goToCenter();
           syncView();
         }}
         onMoveStart={(event) => {
@@ -333,6 +351,15 @@ export function MapView({ points, selectedId, hoveredId, onSelect, onBoundsChang
               </Marker>
             ))
           : null}
+
+        {you ? (
+          <Marker longitude={you.longitude} latitude={you.latitude}>
+            <span title="You are here" className="relative flex size-4" data-testid="you-are-here">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-[#3d7eff] opacity-50 motion-reduce:animate-none" />
+              <span className="relative inline-flex size-4 rounded-full border-2 border-white bg-[#3d7eff] shadow" />
+            </span>
+          </Marker>
+        ) : null}
 
         {secondary.map((item, i) => (
           <Marker key={`s-${i}`} longitude={item.longitude} latitude={item.latitude}>

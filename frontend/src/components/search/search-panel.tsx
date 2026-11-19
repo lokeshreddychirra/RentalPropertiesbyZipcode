@@ -1,15 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, MapPin, Search, X } from "@/components/ui/icons";
+import Link from "next/link";
+import { ChevronDown, Search, Settings, X } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Alert, Card } from "@/components/ui/card";
-import { Field, Input, NumberInput, Select } from "@/components/ui/form";
+import { Field, NumberInput, Select } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
-import { EMPTY_FORM, filtersToForm, formToFilters, parseZips, type FilterForm } from "@/lib/filters";
-import { useStatus } from "@/lib/store";
-import type { SearchFilters } from "@/lib/types";
+import { api } from "@/lib/api";
+import { EMPTY_FORM, filtersToForm, formToFilters, isPlaceText, parseZips, type FilterForm } from "@/lib/filters";
+import { currentPosition, LocationError } from "@/lib/geo";
+import { useApp, useStatus } from "@/lib/store";
+import type { PlaceSuggestion, SearchFilters } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { CityZipPicker, LocationBox } from "./location-box";
 
 const PROPERTY_TYPES: { value: string; label: string }[] = [
   { value: "single_family", label: "Single family" },
@@ -89,46 +93,111 @@ interface PanelProps {
 }
 
 export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
-  const [form, setForm] = React.useState<FilterForm>(() => filtersToForm(initial));
+  const { searchDefaults, defaults: assumptions, hydrated } = useApp();
+  const defaultFilters = searchDefaults.filters as Partial<SearchFilters> | undefined;
+  // A new search starts from the user's default filters (Settings); a running one shows its own.
+  const startForm = React.useCallback(() => filtersToForm(initial ?? defaultFilters ?? null), [initial, defaultFilters]);
+  const [form, setForm] = React.useState<FilterForm>(startForm);
   const [error, setError] = React.useState<string | null>(null);
+  const [city, setCity] = React.useState<PlaceSuggestion | null>(null);
+  const [locating, setLocating] = React.useState(false);
   const { data: status } = useStatus();
   const initialKey = JSON.stringify(initial ?? null);
+  const defaultsKey = JSON.stringify(defaultFilters ?? null);
   const formRef = React.useRef(form);
   formRef.current = form;
 
   React.useEffect(() => {
-    setForm(filtersToForm(initial));
+    // Keep whatever is being typed when saved defaults arrive after the page loads.
+    setForm((current) => ({ ...startForm(), location: initial ? startForm().location : current.location }));
     setError(null);
+    setCity(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialKey]);
+  }, [initialKey, defaultsKey, hydrated]);
 
   const set = <K extends keyof FilterForm>(key: K, value: FilterForm[K]) => setForm((current) => ({ ...current, [key]: value }));
   const dirty = JSON.stringify(form) !== JSON.stringify(EMPTY_FORM);
+  const usingDefaults = !!defaultFilters && Object.keys(defaultFilters).length > 0;
+
+  const checkRanges = (next: FilterForm): string | null => {
+    if (next.minPrice != null && next.maxPrice != null && next.minPrice > next.maxPrice) return "The minimum price is higher than the maximum price.";
+    if (next.minYear != null && next.maxYear != null && next.minYear > next.maxYear) return "“Built from” is later than “built to”.";
+    return null;
+  };
+
+  /** Search one ZIP code (typed, suggested or found at the user's location). */
+  const searchZip = (zip: string, next: FilterForm = formRef.current) => {
+    setCity(null);
+    setForm({ ...next, location: zip });
+    onSearch({ ...formToFilters({ ...next, location: zip }) });
+  };
+
+  /** A city or ZIP code picked from the suggestions. */
+  const pickPlace = (place: PlaceSuggestion) => {
+    setError(null);
+    if (place.kind === "postcode" && place.zip_code) return searchZip(place.zip_code);
+    setForm((current) => ({ ...current, location: place.label }));
+    setCity(place);
+  };
 
   /** Validate and run the search with the given form (defaults to the current one). */
-  const run = (next: FilterForm = formRef.current, quiet = false) => {
-    const parsed = parseZips(next.location);
-    if (parsed.error) return setError(parsed.error);
-    if (!parsed.zip_codes.length) {
-      if (!quiet) setError("Enter a five digit ZIP code, for example 38116.");
+  const run = async (next: FilterForm = formRef.current, quiet = false) => {
+    const rangeError = checkRanges(next);
+    if (rangeError) return setError(rangeError);
+    // A drawn map area or a city carries its own ZIP codes; keep them while only other filters change.
+    const keep = !!(initial?.polygon?.length || initial?.place) && next.location === filtersToForm(initial).location;
+    if (keep) {
+      setError(null);
+      return onSearch({ ...formToFilters(next), zip_codes: initial!.zip_codes, polygon: initial!.polygon ?? null, place: initial!.place ?? null });
+    }
+    const text = next.location.trim();
+    if (!text) {
+      if (!quiet) setError("Enter a ZIP code or a city, for example 38116 or Memphis, TN.");
       return;
     }
-    // A drawn map area carries its own ZIP codes; keep it while the user only changes other filters.
-    const keepArea = !!initial?.polygon?.length && next.location === filtersToForm(initial).location;
-    if (parsed.zip_codes.length > 1 && !keepArea) {
-      return setError("Search one ZIP code at a time.");
+    if (isPlaceText(text)) {
+      if (quiet) return; // filter chips only remember the choice until a city is picked
+      if (city && city.label === text) return; // its ZIP codes are already showing
+      try {
+        const hits = await api.places(text);
+        const hit = hits.find((h) => h.kind === "place") ?? hits[0];
+        if (!hit) return setError(`We could not find “${text}”. Try a ZIP code, or a city with its state like Memphis, TN.`);
+        pickPlace(hit);
+      } catch {
+        setError("Places could not be looked up right now. Try a ZIP code instead.");
+      }
+      return;
     }
-    if (next.minPrice != null && next.maxPrice != null && next.minPrice > next.maxPrice) return setError("The minimum price is higher than the maximum price.");
-    if (next.minYear != null && next.maxYear != null && next.minYear > next.maxYear) return setError("“Built from” is later than “built to”.");
+    const parsed = parseZips(text);
+    if (parsed.error) return setError(parsed.error);
+    if (parsed.zip_codes.length > 1) return setError("Search one ZIP code at a time, or type a city to search several of its ZIP codes.");
     setError(null);
-    onSearch(keepArea ? { ...formToFilters(next), polygon: initial!.polygon } : formToFilters(next));
+    searchZip(parsed.zip_codes[0], next);
   };
+
+  const locate = async () => {
+    setLocating(true);
+    setError(null);
+    try {
+      const here = await currentPosition();
+      const hit = await api.zipAt(here.latitude, here.longitude);
+      if (!hit.zip_code) setError("We could not find a ZIP code at your location. Type a ZIP code or city instead.");
+      else searchZip(hit.zip_code);
+    } catch (err) {
+      setError(err instanceof LocationError ? err.message : "Your location could not be looked up right now. Type a ZIP code or city instead.");
+    } finally {
+      setLocating(false);
+    }
+  };
+
   // Filter panels apply as soon as there is a ZIP code; without one they just remember the choice.
   const apply = (values?: Partial<FilterForm>) => {
     const next = values ? { ...formRef.current, ...values } : formRef.current;
     if (values) setForm(next);
-    run(next, true);
+    void run(next, true);
   };
+  const down = Number(assumptions.financing?.down_payment_pct ?? 25);
+  const rate = Number(assumptions.financing?.interest_rate_pct ?? 7);
 
   const returnsCount = [form.minGrossYield, form.minCashFlow, form.minCashOnCash, form.minCapRate, form.minNetYield].filter((v) => v != null).length;
   const moreCount = [form.maxHoa, form.maxDom].filter((v) => v != null).length;
@@ -139,30 +208,38 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          run();
+          void run();
         }}
         aria-label="Property search"
         className="space-y-3 p-3"
       >
         <div className="flex gap-2">
-          <div className="relative min-w-0 flex-1">
-            <MapPin className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" aria-hidden />
-            <Input
-              id="f-location"
-              aria-label="ZIP code"
-              placeholder="Enter a ZIP code, like 38116"
-              inputMode="numeric"
-              maxLength={5}
-              value={form.location}
-              onChange={(e) => set("location", e.target.value)}
-              autoComplete="postal-code"
-              className="body-3 h-12 rounded-lg pl-12"
-            />
-          </div>
+          <LocationBox
+            value={form.location}
+            onChange={(value) => {
+              set("location", value);
+              if (city && value !== city.label) setCity(null);
+            }}
+            onPick={pickPlace}
+            onLocate={locate}
+            locating={locating}
+          />
           <Button type="submit" size="lg" disabled={busy} className="h-12 px-4" aria-label={busy ? "Searching" : "Find deals"}>
             <Search /> <span className="hidden sm:inline">{busy ? "Searching…" : "Find deals"}</span>
           </Button>
         </div>
+
+        {city ? (
+          <CityZipPicker
+            place={city}
+            onCancel={() => setCity(null)}
+            onSearch={(zips, label) => {
+              setCity(null);
+              setForm((current) => ({ ...current, location: label }));
+              onSearch({ ...formToFilters(formRef.current), zip_codes: zips, place: label, polygon: null });
+            }}
+          />
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
           <FilterButton
@@ -274,7 +351,12 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
                 <NumberInput id="f-net" suffix="%" placeholder="Any" value={form.minNetYield} onValueChange={(v) => set("minNetYield", v)} />
               </Field>
             </div>
-            <p className="caption-5 text-pretty text-muted-foreground">Calculated with 25% down at 7% (default financing) as a long term rental.</p>
+            <p className="caption-5 text-pretty text-muted-foreground">
+              Calculated with {down >= 100 ? "an all cash purchase" : `${down}% down at ${rate}%`} as a long term rental.{" "}
+              <Link href="/settings" className="underline underline-offset-2 hover:text-foreground">
+                Change in Settings
+              </Link>
+            </p>
           </FilterButton>
 
           <FilterButton
@@ -300,11 +382,23 @@ export function SearchPanel({ initial, onSearch, onReset, busy }: PanelProps) {
               onClick={() => {
                 setForm({ ...EMPTY_FORM });
                 setError(null);
+                setCity(null);
                 onReset();
               }}
             >
               <X className="size-3.5" aria-hidden /> Clear all
             </button>
+          ) : null}
+
+          {usingDefaults ? (
+            <Link
+              href="/settings"
+              className="caption-4 inline-flex h-8 items-center gap-1 rounded-full px-2 text-muted-foreground transition-colors hover:text-foreground"
+              title="New searches start with the filters saved in Settings"
+              data-testid="defaults-link"
+            >
+              <Settings className="size-3.5" aria-hidden /> Your default filters
+            </Link>
           ) : null}
 
           {status?.data_mode === "demo" ? (
