@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "appName": { "value": "propertyyield" },
+    "acrName": { "value": "<your-acr-name>" },
+    "apiImageTag": { "value": "<git-sha>" },
+    "webImageTag": { "value": "<git-sha>" },
+    "dataMode": { "value": "auto" },
+    "adminEmails": { "value": "" },
+    "mapboxPublicToken": { "value": "" },
+    "postgresAdminPassword": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<vault>" },
+        "secretName": "postgres-admin-password"
+      }
+    },
+    "secretKey": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<vault>" },
+        "secretName": "app-secret-key"
+      }
+    },
+    "rentcastApiKey": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<vault>" },
+        "secretName": "rentcast-api-key"
+      }
+    }
+  }
+}

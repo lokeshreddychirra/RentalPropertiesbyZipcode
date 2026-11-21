@@ -1,0 +1,582 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Light theme. Colours are HSL triplets so Tailwind can add opacity (bg-card/70). */
+  :root {
+    --background: 220 33% 97%;
+    --foreground: 226 32% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 226 32% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 226 32% 11%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 30% 94%;
+    --secondary-foreground: 226 32% 14%;
+    --muted: 222 30% 94%;
+    --muted-foreground: 222 12% 40%;
+    --accent: 230 40% 93%;
+    --accent-foreground: 226 32% 12%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 224 22% 88%;
+    --input: 224 20% 84%;
+    --ring: 243 75% 59%;
+    --font-sans: "Geist Variable", Geist;
+
+    --positive: 158 70% 28%;
+    --positive-soft: 152 60% 93%;
+    --caution: 32 92% 34%;
+    --caution-soft: 42 96% 91%;
+    --negative: 0 70% 46%;
+    --negative-soft: 0 85% 96%;
+    --info-soft: 224 90% 96%;
+    --info: 224 70% 40%;
+    --demo-soft: 258 90% 95%;
+    --demo: 262 70% 42%;
+
+    /* Brand gradient (buttons, active states, glow) */
+    --brand-a: #6366f1;
+    --brand-b: #06b6d4;
+    --glow: 99 102 241;
+
+    /* Glass surfaces */
+    --glass-bg: rgb(255 255 255 / 0.72);
+    --glass-strong: rgb(255 255 255 / 0.88);
+    --glass-border: rgb(15 23 42 / 0.08);
+    --glass-highlight: rgb(255 255 255 / 0.9);
+    --glass-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 8px 24px rgb(15 23 42 / 0.06);
+
+    /* Aurora backdrop */
+    --aurora-1: rgb(99 102 241 / 0.22);
+    --aurora-2: rgb(6 182 212 / 0.18);
+    --aurora-3: rgb(16 185 129 / 0.14);
+    --grid-line: rgb(15 23 42 / 0.045);
+
+    --hero-from: #0b1020;
+    --hero-to: #5b6478;
+
+    /* Chart series: categorical, fixed order, validated for colour-vision deficiency */
+    --series-ltr: #2a78d6;
+    --series-str: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+    --series-5: #e87ba4;
+    --series-6: #008300;
+    --series-7: #6250d6;
+    --series-8: #e34948;
+    --chart-grid: #e6e9ee;
+    --chart-axis: #6b7280;
+    --chart-label: #374151;
+    --chart-cursor: #f3f4f6;
+    --track: #dde3ea;
+    --ring-empty: #e6e9ee;
+  }
+
+  /* Dark theme (default). */
+  .dark {
+    --background: 228 32% 6%;
+    --foreground: 220 30% 96%;
+    --card: 228 26% 10%;
+    --card-foreground: 220 30% 96%;
+    --popover: 228 26% 11%;
+    --popover-foreground: 220 30% 96%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 228 22% 15%;
+    --secondary-foreground: 220 30% 94%;
+    --muted: 228 22% 14%;
+    --muted-foreground: 222 16% 66%;
+    --accent: 230 24% 18%;
+    --accent-foreground: 220 30% 96%;
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 228 20% 20%;
+    --input: 228 18% 24%;
+    --ring: 239 84% 67%;
+
+    --positive: 156 64% 52%;
+    --positive-soft: 160 50% 14%;
+    --caution: 40 92% 60%;
+    --caution-soft: 38 60% 14%;
+    --negative: 0 84% 68%;
+    --negative-soft: 0 50% 15%;
+    --info-soft: 226 50% 16%;
+    --info: 220 90% 75%;
+    --demo-soft: 262 40% 18%;
+    --demo: 262 90% 80%;
+
+    --brand-a: #818cf8;
+    --brand-b: #22d3ee;
+    --glow: 129 140 248;
+
+    --glass-bg: rgb(18 22 36 / 0.62);
+    --glass-strong: rgb(20 24 40 / 0.86);
+    --glass-border: rgb(255 255 255 / 0.08);
+    --glass-highlight: rgb(255 255 255 / 0.06);
+    --glass-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 12px 32px rgb(0 0 0 / 0.38);
+
+    --aurora-1: rgb(99 102 241 / 0.32);
+    --aurora-2: rgb(6 182 212 / 0.22);
+    --aurora-3: rgb(16 185 129 / 0.16);
+    --grid-line: rgb(255 255 255 / 0.035);
+
+    --hero-from: #ffffff;
+    --hero-to: #9b9b9b;
+
+    --series-ltr: #60a5fa;
+    --series-str: #fb923c;
+    --series-3: #34d399;
+    --series-4: #fbbf24;
+    --chart-grid: rgb(255 255 255 / 0.08);
+    --chart-axis: #9aa3b5;
+    --chart-label: #d6dbe6;
+    --chart-cursor: rgb(255 255 255 / 0.05);
+    --track: rgb(255 255 255 / 0.12);
+    --ring-empty: rgb(255 255 255 / 0.1);
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+/* Named text styles (landing-page-design B1). Sizes are Tailwind scale steps with their line heights. */
+@layer components {
+  .heading-1 { @apply text-6xl font-semibold tracking-tight; }
+  .heading-2 { @apply text-5xl font-semibold tracking-tight; }
+  .heading-3 { @apply text-4xl font-semibold tracking-tight; }
+  .heading-4 { @apply text-3xl font-semibold tracking-tight; }
+  .heading-5 { @apply text-2xl font-semibold tracking-tight; }
+  .heading-6 { @apply text-xl font-semibold; }
+  .title-1 { @apply text-xl font-medium; }
+  .title-2 { @apply text-lg font-medium; }
+  .title-3 { @apply text-base font-medium; }
+  .title-4 { @apply text-sm font-medium; }
+  .title-5 { @apply text-xs font-medium; }
+  .body-1 { @apply text-base font-semibold; }
+  .body-2 { @apply text-base font-medium; }
+  .body-3 { @apply text-base font-normal; }
+  .body-4 { @apply text-sm font-semibold; }
+  .body-5 { @apply text-sm font-medium; }
+  .body-6 { @apply text-sm font-normal; }
+  .button-lg { @apply text-lg font-semibold; }
+  .button-md { @apply text-base font-semibold; }
+  .button-sm { @apply text-sm font-semibold; }
+  .button-xsm { @apply text-xs font-semibold; }
+  .caption-1 { @apply text-sm font-medium; }
+  .caption-2 { @apply text-sm font-normal; }
+  .caption-3 { @apply text-xs font-semibold; }
+  .caption-4 { @apply text-xs font-medium; }
+  .caption-5 { @apply text-xs font-normal; }
+
+  /* Hero heading: the one gradient, on text only (B5). */
+  .hero-gradient {
+    background-image: linear-gradient(to right, var(--hero-from), var(--hero-to));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+@layer utilities {
+  /* Tabular figures wherever numbers are compared */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}
+
+.mapboxgl-popup-content,
+.maplibregl-popup-content {
+  border-radius: 0.75rem;
+  padding: 0;
+  background: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground));
+  box-shadow: 0 8px 24px rgb(16 24 40 / 0.16);
+}
+
+/* Range slider used by the deal simulator: filled track up to the thumb (--fill). */
+.sim-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 1.25rem;
+  width: 100%;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.sim-slider:focus-visible {
+  outline: none;
+}
+.sim-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, hsl(var(--primary)) 0, hsl(var(--primary)) var(--fill, 0%), var(--track) var(--fill, 0%), var(--track) 100%);
+}
+.sim-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--track);
+}
+.sim-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+}
+.sim-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -6px;
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 2px solid hsl(var(--primary));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+  transition: transform 120ms ease;
+}
+.sim-slider::-moz-range-thumb {
+  height: 14px;
+  width: 14px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 2px solid hsl(var(--primary));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+.sim-slider:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+.sim-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgb(var(--glow) / 0.35);
+}
+.sim-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 4px rgb(var(--glow) / 0.35);
+}
+
+/* Scroll reveal (B7): rise 32px and fade in once, on the base curve. */
+.reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal[data-shown="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+/* Tagline reveal (B11): each word moves from a muted tone to full colour in reading order. */
+.reveal-word {
+  opacity: 0.3;
+  transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-word[data-on="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    transform: none;
+    transition: opacity 300ms linear;
+  }
+  .reveal-word {
+    opacity: 1;
+    transition: none;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Mobile menu links arrive one after another (B7): up 24px and fade in, 60ms apart, capped at 400ms. */
+@keyframes nav-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.nav-enter {
+  animation: nav-enter 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Glass cards floating over the 3D hero (glass UI direction). */
+.glass-card {
+  border-radius: 0.75rem;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-strong);
+  padding: 0.5rem 0.75rem;
+  box-shadow: 0 1px 0 var(--glass-highlight) inset, 0 16px 40px rgb(0 0 0 / 0.22);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transform-style: preserve-3d;
+}
+@keyframes float-y {
+  0%, 100% { transform: perspective(800px) rotateX(8deg) rotateY(-10deg) translateY(0); }
+  50% { transform: perspective(800px) rotateX(8deg) rotateY(-10deg) translateY(-8px); }
+}
+.float-a { animation: float-y 6s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.float-b { animation: float-y 7s cubic-bezier(0.22, 1, 0.36, 1) infinite; animation-delay: -2s; }
+.float-c { animation: float-y 8s cubic-bezier(0.22, 1, 0.36, 1) infinite; animation-delay: -4s; }
+
+/* Cards that tilt toward the viewer on hover, with a deeper shadow. */
+.tilt-card {
+  transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform: perspective(900px) rotateX(0) translateY(0);
+}
+.tilt-card:hover {
+  transform: perspective(900px) rotateX(6deg) translateY(-4px);
+  box-shadow: 0 20px 40px -12px rgb(var(--glow) / 0.35), 0 4px 10px rgb(0 0 0 / 0.08);
+}
+.tilt-card:active {
+  transform: perspective(900px) rotateX(2deg) scale(0.98);
+}
+
+/* Raised icon tile: solid face, light top edge, soft drop shadow. */
+.depth-tile {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 8px 20px -6px rgb(var(--glow) / 0.45), 0 1px 2px rgb(0 0 0 / 0.08);
+  color: hsl(var(--primary));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .float-a, .float-b, .float-c { animation: none; transform: none; }
+  .tilt-card, .tilt-card:hover, .tilt-card:active { transform: none; }
+}
+
+/* ---------------------------------------------------------------- advanced GUI layer */
+
+/* Frosted glass surface used by cards, the sidebar, the header and overlays. */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+.glass-strong {
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+}
+
+/* Aurora backdrop: soft colour fields that drift slowly behind the whole app, over a faint grid. */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: hsl(var(--background));
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+/* iPhone Safari can count blurred, animated shapes toward the page width even inside overflow: hidden,
+   which lets the whole page slide sideways. clip-path clips filters too, and containment keeps the layer
+   from affecting layout. */
+.aurora {
+  clip-path: inset(0);
+  contain: strict;
+}
+/* Safety net: the page never scrolls sideways. On html this applies to the viewport, so the sticky header
+   keeps working; clip (where supported) does not create a scroll container. */
+html {
+  overflow-x: hidden;
+}
+@supports (overflow: clip) {
+  html,
+  body {
+    overflow-x: clip;
+  }
+}
+.aurora::after {
+  /* fade the grid out toward the bottom */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 0%, hsl(var(--background)) 85%);
+}
+.aurora span {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  will-change: transform;
+}
+.aurora span:nth-child(1) { width: 46vw; height: 46vw; left: -8vw; top: -16vw; background: var(--aurora-1); animation: aurora-a 26s cubic-bezier(0.22, 1, 0.36, 1) infinite alternate; }
+.aurora span:nth-child(2) { width: 38vw; height: 38vw; right: -10vw; top: -6vw; background: var(--aurora-2); animation: aurora-b 32s cubic-bezier(0.22, 1, 0.36, 1) infinite alternate; }
+.aurora span:nth-child(3) { width: 34vw; height: 34vw; left: 30vw; top: 30vh; background: var(--aurora-3); animation: aurora-c 38s cubic-bezier(0.22, 1, 0.36, 1) infinite alternate; }
+@keyframes aurora-a { to { transform: translate3d(12vw, 8vh, 0) scale(1.15); } }
+@keyframes aurora-b { to { transform: translate3d(-10vw, 12vh, 0) scale(0.9); } }
+@keyframes aurora-c { to { transform: translate3d(-8vw, -10vh, 0) scale(1.2); } }
+
+/* Brand button: gradient face, glow, lifts on hover. */
+.btn-brand {
+  color: #fff;
+  background-image: linear-gradient(135deg, var(--brand-a), var(--brand-b));
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.25) inset, 0 8px 24px -8px rgb(var(--glow) / 0.8);
+}
+.btn-brand:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.25) inset, 0 12px 30px -8px rgb(var(--glow) / 0.95);
+  transform: translateY(-1px);
+}
+
+/* Gradient text for page titles and accents. */
+.text-gradient,
+main h1:not(.hero-gradient):not(.plain) {
+  background-image: linear-gradient(90deg, hsl(var(--foreground)), hsl(var(--foreground) / 0.7));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-brand {
+  background-image: linear-gradient(90deg, var(--brand-a), var(--brand-b));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Gradient hairline border for featured cards. */
+.ring-brand {
+  position: relative;
+}
+.ring-brand::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--brand-a), var(--brand-b));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Every page eases in on navigation. */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.page-enter {
+  animation: page-in 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Pointer-follow 3D tilt (set by TiltCard via --rx / --ry). */
+.tilt-3d {
+  transform: perspective(1000px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(var(--lift, 0));
+  transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-style: preserve-3d;
+}
+.tilt-3d:hover {
+  --lift: -4px;
+  box-shadow: 0 24px 48px -16px rgb(var(--glow) / 0.4), var(--glass-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora span { animation: none; }
+  .page-enter { animation: none; }
+  .tilt-3d, .tilt-3d:hover { transform: none; }
+  .btn-brand:hover { transform: none; }
+}
+
+.maplibregl-popup-tip, .mapboxgl-popup-tip { border-top-color: hsl(var(--popover)) !important; border-bottom-color: hsl(var(--popover)) !important; }
+
+/* Property illustrations: dusk palette in the dark theme. */
+.illustration .ill-night { opacity: 0; transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1); }
+.dark .illustration .ill-night { opacity: 0.82; }
+.dark .illustration .ill-sun { fill: #f5f1de; opacity: 0.95; }
+.dark .illustration .ill-ground { filter: brightness(0.42) saturate(1.1); }
+.dark .illustration .ill-window { fill: #ffd27a; filter: drop-shadow(0 0 4px rgb(255 200 110 / 0.8)); }
+.dark .illustration { filter: saturate(0.95); }
+
+/* Dark basemap: invert the raster tiles in the dark theme. Markers are HTML and keep their colours. */
+.dark .maplibregl-canvas,
+.dark .mapboxgl-canvas {
+  filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.8);
+}
+.dark .illustration .ill-tree { filter: brightness(0.5); }
+
+/* ---------------------------------------------------------------- app shell on phones
+ * Safe areas (notch, home indicator, Android system bars) for the installed app and the
+ * iOS / Android apps. In an ordinary browser tab every inset is 0, so nothing moves. */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  /* Height the bottom tab bar takes, so content and trays can clear it. */
+  --tabbar-space: calc(4.75rem + var(--sab));
+}
+@media (min-width: 1024px) {
+  :root {
+    --tabbar-space: 0px;
+  }
+}
+body {
+  padding-top: var(--sat);
+  padding-left: var(--sal);
+  padding-right: var(--sar);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+/* Solid strip behind the status bar so scrolled content never shows through it. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--sat);
+  background: hsl(var(--background));
+  z-index: 45;
+  pointer-events: none;
+}
+.safe-sticky {
+  top: calc(0.5rem + var(--sat));
+}
+.tabbar {
+  bottom: calc(0.5rem + var(--sab));
+  left: calc(0.5rem + var(--sal));
+  right: calc(0.5rem + var(--sar));
+}
+/* Side drawers clear the status bar and home indicator. */
+[role="dialog"].inset-y-0 {
+  padding-top: calc(1.25rem + var(--sat));
+  padding-bottom: calc(1.25rem + var(--sab));
+}
+[role="dialog"].inset-y-0 > button[aria-label="Close"] {
+  top: calc(1rem + var(--sat));
+}
+/* Inside the installed app, text is not selectable by accident on long press of controls. */
+@media (display-mode: standalone) {
+  nav,
+  button {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+.native nav,
+.native button {
+  -webkit-user-select: none;
+  user-select: none;
+}

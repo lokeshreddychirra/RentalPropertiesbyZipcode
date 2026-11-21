@@ -1,0 +1,353 @@
+"""Search execution (background jobs with progress), natural-language parsing and saved searches."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from decimal import Decimal
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+
+from app.api.deps import CurrentUser, OptionalUser, Session, rate_limit
+from app.core.errors import AppError, NotFoundError
+from app.models.tables import SavedSearch
+from app.providers.base import BudgetExceeded, ProviderError
+from app.providers.registry import get_providers
+from app.schemas.analysis import AssumptionOverrides
+from app.schemas.search import MapResults, SearchFilters, SearchJob, SearchResults, SearchRunRequest, SortKey
+from app.services import area as area_service
+from app.services import plans
+from app.services import search as search_service
+from app.services.jobs import enqueue_search
+from app.services.nl_search import NLParseResult, parse_query
+
+router = APIRouter(prefix="/searches", tags=["searches"])
+
+
+def parse_bbox(value: str | None) -> tuple[float, float, float, float] | None:
+    if not value:
+        return None
+    try:
+        west, south, east, north = (float(part) for part in value.split(","))
+    except ValueError as exc:
+        raise AppError("bbox must be 'west,south,east,north'", code="validation_error", status_code=422) from exc
+    return west, south, east, north
+
+
+def parse_polygon(value: str | None) -> list[tuple[float, float]] | None:
+    if not value:
+        return None
+    try:
+        points = [(float(lng), float(lat)) for lng, lat in (pair.split(",") for pair in value.split(";"))]
+    except ValueError as exc:
+        raise AppError("polygon must be 'lng,lat;lng,lat;…'", code="validation_error", status_code=422) from exc
+    if not 3 <= len(points) <= 200:
+        raise AppError("polygon must have between 3 and 200 vertices", code="validation_error", status_code=422)
+    return points
+
+
+@router.post("/run", response_model=SearchJob, status_code=202, dependencies=[rate_limit("search", 40, 60)])
+async def run_search(body: SearchRunRequest, user: CurrentUser, session: Session) -> SearchJob:
+    """Start a property search as a background job. Poll the job for progress, then read its results.
+
+    Requires an account. Searches are by ZIP code and count against the user's plan (distinct ZIP codes
+    per period). An identical recent search returns its existing job (served from cache) unless
+    `refresh` is set — which only administrators may do.
+    """
+    await plans.authorize_search(session, user, body.filters)
+    if body.refresh and not plans.is_unlimited(user):
+        body = body.model_copy(update={"refresh": False})
+    job, needs_run = await search_service.create_job(body)
+    if needs_run:
+        await enqueue_search(job.id)
+    return job
+
+
+@router.get("/jobs/{job_id}", response_model=SearchJob)
+async def get_job(job_id: str) -> SearchJob:
+    job = await search_service.load_job(job_id)
+    if job is None:
+        raise NotFoundError("Search job not found or expired — run the search again")
+    return job
+
+
+@router.get("/jobs/{job_id}/results", response_model=SearchResults)
+async def get_results(
+    job_id: str,
+    sort: SortKey = "score",
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=200)] = 24,
+    bbox: Annotated[str | None, Query(description="Limit to a map viewport: west,south,east,north")] = None,
+    polygon: Annotated[str | None, Query(description="Limit to a drawn area: lng,lat;lng,lat;…")] = None,
+) -> SearchResults:
+    job = await search_service.load_job(job_id)
+    if job is None:
+        raise NotFoundError("Search job not found or expired — run the search again")
+    if job.status == "failed" or (job.status != "completed" and job.results_version == 0):
+        raise AppError("The search has no results yet", code="search_not_ready", status_code=409, details={"status": job.status})
+    cards = await search_service.load_cards(job_id)
+    if cards is None:
+        raise NotFoundError("Search results have expired — run the search again")
+    return search_service.page_results(job, cards, sort=sort, page=page, page_size=page_size, bbox=parse_bbox(bbox), polygon=parse_polygon(polygon))
+
+
+@router.get("/jobs/{job_id}/map", response_model=MapResults)
+async def get_map_points(job_id: str) -> MapResults:
+    """Lightweight coordinates + headline metrics for every matching property (for map rendering).
+
+    Available as soon as the job has published results (``results_version`` > 0), even while it still runs.
+    """
+    job = await search_service.load_job(job_id)
+    if job is None or job.status == "failed" or (job.status != "completed" and job.results_version == 0):
+        raise NotFoundError("Search results are not available — run the search again")
+    cards = await search_service.load_cards(job_id)
+    if cards is None:
+        raise NotFoundError("Search results have expired — run the search again")
+    return search_service.map_points(job, cards)
+
+
+class ParseRequest(BaseModel):
+    query: str = Field(min_length=3, max_length=500)
+
+
+class ZipAtOut(BaseModel):
+    zip_code: str | None = None
+    place: str | None = None
+
+
+@router.get("/zip-at", response_model=ZipAtOut, dependencies=[rate_limit("zip-at", 60, 60)])
+async def zip_at(
+    user: OptionalUser,
+    latitude: Annotated[float, Query(ge=-90, le=90)],
+    longitude: Annotated[float, Query(ge=-180, le=180)],
+) -> ZipAtOut:
+    """The ZIP code under a point on the map (or the user's current location), so it can be searched.
+
+    Uses the geocoder only (no listing provider requests). Answers with no ZIP when none is found or
+    no geocoder is configured.
+    """
+    geocoder = get_providers().geocoder
+    if geocoder is None:
+        return ZipAtOut()
+    try:
+        hit = await geocoder.zip_at(round(latitude, 3), round(longitude, 3))
+    except (ProviderError, BudgetExceeded):
+        return ZipAtOut()
+    return ZipAtOut(zip_code=hit.zip_code, place=hit.place) if hit else ZipAtOut()
+
+
+class AreaZipsIn(BaseModel):
+    polygon: list[tuple[float, float]] = Field(min_length=3, max_length=200, description="[longitude, latitude] vertices")
+
+
+class AreaZipsOut(BaseModel):
+    zip_codes: list[str] = []
+    max_zips: int = plans.AREA_MAX_ZIPS
+    too_large: bool = False
+    span_miles: float = 0
+    new_searches: int = 0
+    searches_left: int | None = None
+    message: str | None = None
+
+
+@router.post("/area-zips", response_model=AreaZipsOut, dependencies=[rate_limit("area-zips", 20, 60)])
+async def area_zips(body: AreaZipsIn, user: CurrentUser, session: Session) -> AreaZipsOut:
+    """The ZIP codes a shape drawn on the map covers, and what searching them would use of the user's plan.
+
+    Uses the geocoder only (no listing provider requests). Areas wider than about 30 miles, or covering
+    more than ``max_zips`` ZIP codes, come back with ``too_large`` and a request to zoom in.
+    """
+    for lng, lat in body.polygon:
+        if not (-180 <= lng <= 180 and -90 <= lat <= 90):
+            raise AppError("polygon vertices must be [longitude, latitude]", code="validation_error", status_code=422)
+    geocoder = get_providers().geocoder
+    if geocoder is None:
+        return AreaZipsOut(message="Searching a drawn area needs the map service, which is not configured.")
+    found = await area_service.zips_in_area(geocoder, list(body.polygon))
+    if found.too_large:
+        return AreaZipsOut(
+            zip_codes=found.zip_codes,
+            too_large=True,
+            span_miles=found.span_miles,
+            message=f"This area covers more than {plans.AREA_MAX_ZIPS} ZIP codes. Zoom in and draw a smaller area.",
+        )
+    if not found.zip_codes:
+        message = "The map service could not be reached. Try again in a moment." if found.lookup_failed else "No ZIP codes were found inside this area."
+        return AreaZipsOut(span_miles=found.span_miles, message=message)
+    new, left = await plans.zip_allowance(session, user, found.zip_codes)
+    return AreaZipsOut(zip_codes=found.zip_codes, span_miles=found.span_miles, new_searches=new, searches_left=left)
+
+
+class PlaceOut(BaseModel):
+    kind: str
+    label: str
+    name: str
+    region: str | None = None
+    zip_code: str | None = None
+    latitude: float
+    longitude: float
+    bbox: tuple[float, float, float, float] | None = None
+
+
+@router.get("/places", response_model=list[PlaceOut], dependencies=[rate_limit("places", 90, 60)])
+async def suggest_places(user: OptionalUser, q: Annotated[str, Query(min_length=2, max_length=80)]) -> list[PlaceOut]:
+    """Cities and ZIP codes matching what the user is typing (geocoder only, no listing requests)."""
+    geocoder = get_providers().geocoder
+    if geocoder is None:
+        return []
+    try:
+        hits = await geocoder.suggest(q.strip(), limit=6)
+    except (ProviderError, BudgetExceeded):
+        return []
+    return [PlaceOut(**hit.model_dump()) for hit in hits]
+
+
+class PlaceZipsIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    region: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    bbox: tuple[float, float, float, float] | None = None
+
+
+class PlaceZipsOut(BaseModel):
+    place: str
+    zip_codes: list[str] = []
+    max_zips: int = plans.AREA_MAX_ZIPS
+    new_zip_codes: list[str] = []
+    searches_left: int | None = None
+    message: str | None = None
+
+
+@router.post("/place-zips", response_model=PlaceZipsOut, dependencies=[rate_limit("place-zips", 20, 60)])
+async def place_zips(body: PlaceZipsIn, user: OptionalUser, session: Session) -> PlaceZipsOut:
+    """The ZIP codes of a city, most covered first, and which of them would be new ZIP searches for the user.
+
+    Uses the geocoder only (no listing provider requests). A search can cover up to ``max_zips`` of them.
+    """
+    place = f"{body.name}, {body.region.upper()}" if body.region else body.name
+    geocoder = get_providers().geocoder
+    if geocoder is None:
+        return PlaceZipsOut(place=place, message="City search needs the map service, which is not configured. Search by ZIP code instead.")
+    found = await area_service.zips_in_place(
+        geocoder, name=body.name, region=body.region.upper() if body.region else None, latitude=body.latitude, longitude=body.longitude, bbox=body.bbox
+    )
+    if not found.zip_codes:
+        message = "The map service could not be reached. Try again in a moment." if found.lookup_failed else f"No ZIP codes were found for {place}."
+        return PlaceZipsOut(place=place, message=message)
+    if user is None:
+        return PlaceZipsOut(place=place, zip_codes=found.zip_codes, new_zip_codes=found.zip_codes)
+    new_zips, left = await plans.new_zips(session, user, found.zip_codes)
+    return PlaceZipsOut(place=place, zip_codes=found.zip_codes, new_zip_codes=new_zips, searches_left=left)
+
+
+@router.post("/parse", response_model=NLParseResult, dependencies=[rate_limit("nl", 30, 60)])
+async def parse_natural_language(body: ParseRequest) -> NLParseResult:
+    """Convert a natural-language request into validated search filters.
+
+    Criteria that cannot be reliably calculated are returned in `unsupported` with an explanation.
+    """
+    return await parse_query(body.query)
+
+
+# --------------------------------------------------------------------------- saved searches
+
+
+class SavedSearchIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    filters: SearchFilters
+    defaults: AssumptionOverrides | None = None  # type: ignore[valid-type]
+    alerts_enabled: bool = False
+    notify_new_listings: bool = True
+    notify_price_reductions: bool = True
+    cash_flow_threshold: Decimal | None = Field(default=None, ge=-100000, le=1000000)
+    gross_yield_threshold: Decimal | None = Field(default=None, ge=0, le=1000)
+
+
+class SavedSearchPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    alerts_enabled: bool | None = None
+    notify_new_listings: bool | None = None
+    notify_price_reductions: bool | None = None
+    cash_flow_threshold: Decimal | None = None
+    gross_yield_threshold: Decimal | None = None
+
+
+class SavedSearchOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    filters: dict[str, Any]
+    defaults: dict[str, Any]
+    alerts_enabled: bool
+    notify_new_listings: bool
+    notify_price_reductions: bool
+    cash_flow_threshold: float | None
+    gross_yield_threshold: float | None
+    last_checked_at: datetime | None
+    created_at: datetime
+
+
+def _out(row: SavedSearch) -> SavedSearchOut:
+    return SavedSearchOut(
+        id=row.id,
+        name=row.name,
+        filters=row.filters,
+        defaults=row.overrides or {},
+        alerts_enabled=row.alerts_enabled,
+        notify_new_listings=row.notify_new_listings,
+        notify_price_reductions=row.notify_price_reductions,
+        cash_flow_threshold=float(row.cash_flow_threshold) if row.cash_flow_threshold is not None else None,
+        gross_yield_threshold=float(row.gross_yield_threshold) if row.gross_yield_threshold is not None else None,
+        last_checked_at=row.last_checked_at,
+        created_at=row.created_at,
+    )
+
+
+@router.post("/save", response_model=SavedSearchOut, status_code=201)
+async def save_search(body: SavedSearchIn, user: CurrentUser, session: Session) -> SavedSearchOut:
+    row = SavedSearch(
+        user_id=user.id,
+        name=body.name,
+        filters=body.filters.model_dump(mode="json", exclude_defaults=True),
+        overrides=body.defaults.model_dump(mode="json", exclude_none=True) if body.defaults else {},
+        alerts_enabled=body.alerts_enabled,
+        notify_new_listings=body.notify_new_listings,
+        notify_price_reductions=body.notify_price_reductions,
+        cash_flow_threshold=body.cash_flow_threshold,
+        gross_yield_threshold=body.gross_yield_threshold,
+    )
+    session.add(row)
+    await session.flush()
+    await session.refresh(row)
+    return _out(row)
+
+
+@router.get("/saved", response_model=list[SavedSearchOut])
+async def list_saved(user: CurrentUser, session: Session) -> list[SavedSearchOut]:
+    rows = (await session.execute(select(SavedSearch).where(SavedSearch.user_id == user.id).order_by(SavedSearch.created_at.desc()))).scalars()
+    return [_out(row) for row in rows]
+
+
+async def _owned(session: Session, user_id: uuid.UUID, search_id: uuid.UUID) -> SavedSearch:
+    row = await session.get(SavedSearch, search_id)
+    if row is None or row.user_id != user_id:
+        raise NotFoundError("Saved search not found")
+    return row
+
+
+@router.patch("/saved/{search_id}", response_model=SavedSearchOut)
+async def update_saved(search_id: uuid.UUID, body: SavedSearchPatch, user: CurrentUser, session: Session) -> SavedSearchOut:
+    row = await _owned(session, user.id, search_id)
+    for name, value in body.model_dump(exclude_unset=True).items():
+        setattr(row, name, value)
+    await session.flush()
+    await session.refresh(row)
+    return _out(row)
+
+
+@router.delete("/saved/{search_id}", status_code=204)
+async def delete_saved(search_id: uuid.UUID, user: CurrentUser, session: Session) -> None:
+    await session.delete(await _owned(session, user.id, search_id))

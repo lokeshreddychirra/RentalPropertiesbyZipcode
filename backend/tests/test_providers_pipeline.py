@@ -1,0 +1,689 @@
+"""Provider adapters, dedupe, budgets / partial-result disclosure, alerts and AI grounding."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from decimal import Decimal as D
+from types import SimpleNamespace
+
+import httpx
+import pytest
+
+from app.core.config import Settings
+from app.providers.airdna import parse_estimate
+from app.providers.base import BudgetExceeded, ListingQuery, ListingRecord, ProviderAuthError, SubjectProperty
+from app.providers.registry import ProviderSet
+from app.providers.rentcast import RentCastProvider, parse_listing
+from app.providers.usage import get_usage_tracker
+from app.schemas.search import JobProgress, SearchFilters, SearchRunRequest
+from app.services.ai_analyst import AIExplanation, ungrounded_numbers
+from app.services.alerts import detect_events
+from app.services.dedupe import dedupe_key, merge_listings
+from app.services.search import execute_search
+
+API = "/api/v1"
+
+
+def rentcast_listing(n: int, **over) -> dict:
+    base = {
+        "id": f"{n}-Main-St,-Dalton,-GA-30720",
+        "formattedAddress": f"{n} Main St, Dalton, GA 30720",
+        "addressLine1": f"{n} Main St",
+        "city": "Dalton",
+        "state": "GA",
+        "zipCode": "30720",
+        "county": "Whitfield",
+        "latitude": 34.77 + n * 1e-4,
+        "longitude": -84.97,
+        "propertyType": "Single Family",
+        "bedrooms": 3,
+        "bathrooms": 2,
+        "squareFootage": 1500,
+        "yearBuilt": 1995,
+        "hoa": {"fee": 25},
+        "status": "Active",
+        "price": 200000 + n * 100,
+        "listedDate": "2026-05-01T00:00:00.000Z",
+        "lastSeenDate": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "daysOnMarket": 20,
+        "mlsName": "TestMLS",
+        "mlsNumber": str(n),
+        "listingAgent": {"name": "A. Agent"},
+        "history": {"2026-05-01": {"event": "Sale Listing", "price": 215000, "listedDate": "2026-05-01T00:00:00.000Z"}, "2026-05-20": {"event": "Sale Listing", "price": 200000 + n * 100}},
+    }
+    base.update(over)
+    return base
+
+
+def test_rentcast_listing_parsing_and_price_history():
+    record = parse_listing(rentcast_listing(1))
+    assert record.status == "active" and record.property_type == "single_family"
+    assert record.price == D("200100") and record.hoa_fee_monthly == D("25") and record.agent_name == "A. Agent"
+    assert [e.event_type for e in record.price_history] == ["listed", "price_change"]
+    assert record.image_urls == [] and record.listing_url is None  # RentCast does not supply these
+    assert parse_listing({"formattedAddress": "x"}) is None
+    sparse = parse_listing({"id": "a", "formattedAddress": "1 A St, B, GA 30000", "status": "Inactive", "price": "abc"})
+    assert sparse.status == "inactive" and sparse.price is None
+
+
+def make_rentcast(handler, **settings) -> RentCastProvider:
+    cfg = Settings(**{"rentcast_api_key": "test-key", "rentcast_page_size": 500, "rentcast_requests_per_second": 1000, **settings})
+    return RentCastProvider(cfg, transport=httpx.MockTransport(handler))
+
+
+async def test_rentcast_paginates_until_short_page(app):
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["X-Api-Key"] == "test-key"
+        params = dict(request.url.params)
+        calls.append(params)
+        offset, limit = int(params["offset"]), int(params["limit"])
+        total = 1200
+        return httpx.Response(200, json=[rentcast_listing(i) for i in range(offset, min(offset + limit, total))])
+
+    provider = make_rentcast(handler)
+    providers = ProviderSet(mode="live", listing_providers=[provider])
+
+    async def progress(_: JobProgress) -> None:
+        return None
+
+    outcome = await execute_search(SearchRunRequest(filters=SearchFilters(zip_codes=["30720"]), refresh=True), progress, providers)
+    assert [c["offset"] for c in calls] == ["0", "500", "1000"]
+    assert calls[0]["zipCode"] == "30720" and calls[0]["status"] == "Active"
+    assert outcome.listings_fetched == 1200 and len(outcome.cards) == 1200
+    assert outcome.partial_reasons == []
+    # No rent provider configured here: returns are unavailable, never invented.
+    assert all(not card.long_term.available and card.score is None for card in outcome.cards)
+    await provider.aclose()
+
+
+async def test_budget_exhaustion_is_disclosed_as_partial(app, client):
+    await client.post(f"{API}/auth/register", json={"email": f"{uuid.uuid4().hex}@example.com", "password": "correct-horse-battery"})
+    tracker = get_usage_tracker()
+    used, _, _ = await tracker.month_to_date("rentcast")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        offset = int(request.url.params["offset"])
+        return httpx.Response(200, json=[rentcast_listing(10_000 + i) for i in range(offset, offset + 500)])
+
+    provider = make_rentcast(handler)
+    from app.core.db import session_scope
+    from app.models.tables import Provider
+
+    async with session_scope() as session:
+        row = await session.get(Provider, "rentcast")
+        original = row.monthly_request_limit
+        row.monthly_request_limit = used + 2  # allow exactly two more pages
+    tracker.invalidate("rentcast")
+    try:
+        async def progress(_: JobProgress) -> None:
+            return None
+
+        outcome = await execute_search(SearchRunRequest(filters=SearchFilters(zip_codes=["30721"]), refresh=True), progress, ProviderSet(mode="live", listing_providers=[provider]))
+        assert outcome.listings_fetched == 1000
+        assert any("budget" in reason.lower() and "incomplete" in reason for reason in outcome.partial_reasons)
+        with pytest.raises(BudgetExceeded):
+            await provider.search_listings(ListingQuery(zip_code="30721"), offset=0, limit=10)
+    finally:
+        async with session_scope() as session:
+            (await session.get(Provider, "rentcast")).monthly_request_limit = original
+        tracker.invalidate("rentcast")
+        await provider.aclose()
+
+
+async def test_rentcast_retries_rate_limits_and_reports_auth_errors(app):
+    attempts = {"n": 0}
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            return httpx.Response(429, headers={"Retry-After": "0"})
+        return httpx.Response(200, json={"rent": 1850, "rentRangeLow": 1700, "rentRangeHigh": 2000, "comparables": [{"formattedAddress": "2 B St", "price": 1800, "distance": 0.4, "correlation": 0.97}]})
+
+    provider = make_rentcast(flaky)
+    estimate = await provider.rent_estimate(SubjectProperty(formatted_address="1 A St, Dalton, GA 30720", bedrooms=D("3")))
+    assert attempts["n"] == 3 and estimate.rent == D("1850") and len(estimate.comparables) == 1
+    await provider.aclose()
+
+    denied = make_rentcast(lambda request: httpx.Response(403, json={"error": "billing/subscription-inactive", "message": "The provided API key is not associated with an active API subscription."}))
+    with pytest.raises(ProviderAuthError) as refused:
+        await denied.market_stats("30720")
+    assert "active API subscription" in refused.value.message  # the provider's own reason reaches the user
+    await denied.aclose()
+
+    missing = make_rentcast(lambda request: httpx.Response(404, json={}))
+    assert await missing.rent_estimate(SubjectProperty(formatted_address="nowhere")) is None  # unavailable, not invented
+    await missing.aclose()
+
+
+def test_airdna_parser_is_strict_about_missing_data():
+    good = parse_estimate({"payload": {"stats": {"future": {"summary": {"adr": 212.5, "occupancy": 0.61, "revenue": 47300}}}, "comps": [{}, {}]}})
+    assert good.adr == D("212.50") and good.occupancy_pct == D("61.00") and good.adr_includes_cleaning_fee and good.comp_count == 2
+    assert parse_estimate({"payload": {"stats": {"future": {"summary": {"adr": 200}}}}}) is None
+    assert parse_estimate({"payload": {"summary": {"adr": 200, "occupancy": 140}}}) is None
+    assert parse_estimate("nonsense") is None
+
+
+def _record(provider: str, line1: str, **over) -> ListingRecord:
+    data = dict(provider=provider, provider_listing_id=f"{provider}-{line1}", status="active", formatted_address=f"{line1}, Atlanta, GA 30310", address_line1=line1, city="Atlanta", state="GA", zip_code="30310", price=D("250000"))
+    data.update(over)
+    return ListingRecord(**data)
+
+
+def test_dedupe_merges_same_home_across_providers():
+    a = _record("rentcast", "123 North Main Street", last_seen_at=datetime(2026, 6, 1, tzinfo=UTC), bedrooms=D("3"))
+    b = _record("mls", "123 N. Main St", last_seen_at=datetime(2026, 6, 3, tzinfo=UTC), price=D("245000"), image_urls=["https://img/1.jpg"], square_feet=1400)
+    c = _record("mls", "125 N Main St")
+    d = _record("mls", "123 N Main St Apt 4B")
+    assert dedupe_key(a) == dedupe_key(b) != dedupe_key(c)
+    assert dedupe_key(d) != dedupe_key(a) and dedupe_key(d) == dedupe_key(_record("x", "123 N Main St", address_line2="Unit 4b"))
+    merged = {m.key: m for m in merge_listings([a, b, c, d])}
+    assert len(merged) == 3
+    home = merged[dedupe_key(a)]
+    assert home.primary.provider == "mls" and home.primary.price == D("245000")  # freshest record leads
+    assert home.primary.bedrooms == D("3") and home.primary.square_feet == 1400  # gaps filled from the other source
+    assert {s.provider for s in home.sources} == {"rentcast", "mls"} and home.image_urls == ["https://img/1.jpg"]
+
+
+def _card(pid: str, price: float, cash_flow: float, gross_yield: float):
+    summary = SimpleNamespace(available=True, monthly_cash_flow=D(str(cash_flow)), gross_yield_pct=D(str(gross_yield)))
+    return SimpleNamespace(id=uuid.UUID(pid), price=D(str(price)), address_line1="1 A St", formatted_address="1 A St, B, GA", primary_strategy="ltr", long_term=summary, short_term=summary)
+
+
+def test_alert_events_are_deduplicated_and_baselined():
+    p1, p2 = "00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"
+    search = SimpleNamespace(id=uuid.uuid4(), name="S", known_listings={}, last_checked_at=None, notify_new_listings=True, notify_price_reductions=True, cash_flow_threshold=D("300"), gross_yield_threshold=None)
+    events, known = detect_events(search, [_card(p1, 200000, 350, 9)], "ltr")
+    assert [e["type"] for e in events] == ["cash_flow_threshold"]  # first run is a baseline: no "new listing"
+    search.known_listings, search.last_checked_at = known, datetime.now(UTC)
+
+    events2, known2 = detect_events(search, [_card(p1, 190000, 350, 9), _card(p2, 150000, 100, 7)], "ltr")
+    kinds = sorted(e["type"] for e in events2)
+    assert kinds == ["cash_flow_threshold", "new_listing", "price_reduction"]
+    # Same state again → identical dedupe keys, so the unique constraint drops them.
+    search.known_listings = known
+    assert {e["dedupe_key"] for e in detect_events(search, [_card(p1, 190000, 350, 9), _card(p2, 150000, 100, 7)], "ltr")[0]} == {e["dedupe_key"] for e in events2}
+    assert next(e for e in events if e["type"] == "cash_flow_threshold")["dedupe_key"] == next(e for e in events2 if e["type"] == "cash_flow_threshold")["dedupe_key"]
+    search.known_listings = known2
+    assert [e["type"] for e in detect_events(search, [_card(p1, 190000, 350, 9), _card(p2, 150000, 100, 7)], "ltr")[0]] == ["cash_flow_threshold"]
+
+
+def test_ai_grounding_rejects_invented_numbers():
+    facts = {"long_term_rental": {"gross_yield_pct": 9.2, "monthly_cash_flow": 412.37, "total_cash_invested": 68450.0}, "assumptions": {"interest_rate_pct": 7.0, "loan_term_years": 30}}
+
+    def explanation(summary: str) -> AIExplanation:
+        return AIExplanation(summary=summary, attractive_points=[], cash_flow="", strategy_comparison="", strengths=[], risks=[], sensitivity="", missing_information=[], due_diligence_questions=["Has the roof been replaced in the last 12 years?"])
+
+    assert ungrounded_numbers(explanation("Gross yield is 9.2% with $412 monthly cash flow on $68,450 invested at 7% over 30 years (about $68k)."), facts) == []
+    bad = ungrounded_numbers(explanation("Gross yield is 11.5% and the home should appreciate 25% in 3 years."), facts)
+    assert bad == ["11.5", "25"]
+
+
+def test_empty_results_explain_which_filter_matched_nothing():
+    from app.services.search import explain_no_matches
+
+    records = [parse_listing(rentcast_listing(i, yearBuilt=1950 + i, price=100000 + i * 1000)) for i in range(20)]
+    message = explain_no_matches(records, SearchFilters(zip_codes=["30720"], min_year_built=1980))
+    assert "There are homes for sale in this area" in message and "none are built 1980 or later (homes here were built 1950–1969)" in message
+    both = explain_no_matches(records, SearchFilters(zip_codes=["30720"], min_year_built=1960, max_price=105000))
+    assert "none match all of your filters together" in both
+    assert explain_no_matches(records, SearchFilters(zip_codes=["30720"], max_price=50000)).count("$100,000–$119,000") == 1
+
+
+def test_land_listings_are_excluded_unless_requested():
+    from app.services.search import ResolvedSearch, passes_listing_filters
+
+    land = _record("rentcast", "9 Empty Lot Rd", property_type="land")
+    house = _record("rentcast", "10 Home St", property_type="single_family")
+    resolved = ResolvedSearch(queries=[])
+    default = SearchFilters(zip_codes=["30310"])
+    assert passes_listing_filters(house, default, resolved) and not passes_listing_filters(land, default, resolved)
+    assert passes_listing_filters(land, SearchFilters(zip_codes=["30310"], property_types=["land"]), resolved)
+
+
+def test_zip_level_screening_rent_is_conservative_and_needs_enough_listings():
+    """Figures observed for a real ZIP: a 2-bed median of $3,300 from 7 listings vs ~$2,430 property-level."""
+    from datetime import UTC, datetime
+
+    from app.providers.base import BedroomStat, MarketStats
+
+    stats = MarketStats(
+        provider="rentcast", zip_code="30269", rental_listings=101, median_rent_per_sqft=D("1.6"), fetched_at=datetime.now(UTC),
+        rent_by_bedrooms=[BedroomStat(bedrooms=2, median=D("3300"), count=7), BedroomStat(bedrooms=3, median=D("2400"), count=49), BedroomStat(bedrooms=6, median=D("4500"), count=1)],
+    )
+    assert stats.screening_rent(D("2"), 1370)[0] == D("2192")  # size-based estimate wins over the thin, high bedroom median
+    assert stats.screening_rent(D("3"), 1660)[0] == D("2400")  # bedroom median is the lower of the two
+    assert stats.screening_rent(D("6"), None) is None  # one listing is not a reliable statistic
+    assert stats.screening_rent(D("7"), 4000)[0] == D("3300")  # no reliable bucket: size-based (6,400) capped at the highest reliable median
+    assert stats.screening_rent(D("7"), 1500)[0] == D("2400")  # … and used as-is when it is below that cap
+    assert stats.screening_rent(None, None) is None
+    thin = stats.model_copy(update={"rental_listings": 12})
+    assert thin.screening_rent(D("6"), 3900) is None  # too few listings for either statistic
+
+
+async def test_area_rents_come_from_rental_listings_and_filters_reuse_the_cache(app, monkeypatch):
+    """One rental-listings request replaces per-ZIP market calls; filter changes cost nothing."""
+    import random
+
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "rent_avm_top_n", 0)
+    monkeypatch.setattr(get_settings(), "market_stats_fallback_max", 1)
+    base = random.randint(90000, 98000)
+    z_main, z_thin_a, z_thin_b = str(base), str(base + 1), str(base + 2)
+    calls: dict[str, int] = {}
+
+    def home(n: int, zip_code: str, **over) -> dict:
+        return rentcast_listing(n, id=f"{n}-{zip_code}", formattedAddress=f"{n} Main St, Dalton, GA {zip_code}", zipCode=zip_code, **over)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.removeprefix("/v1")
+        calls[path] = calls.get(path, 0) + 1
+        if path == "/listings/sale":
+            homes = [home(i, z_main) for i in range(6)] + [home(100 + i, z_thin_a) for i in range(2)] + [home(200 + i, z_thin_b) for i in range(3)]
+            return httpx.Response(200, json=homes)
+        if path == "/listings/rental/long-term":
+            rentals = [home(500 + i, z_main, price=1700 + 20 * i, bedrooms=3) for i in range(8)]
+            return httpx.Response(200, json=rentals)
+        if path == "/markets":
+            return httpx.Response(200, json={"rentalData": {"medianRent": 1500, "totalListings": 40, "medianRentPerSquareFoot": 1.0, "dataByBedrooms": [{"bedrooms": 3, "medianRent": 1500, "totalListings": 12}]}})
+        return httpx.Response(404, json={})
+
+    provider = make_rentcast(handler)
+    providers = ProviderSet(mode="live", listing_providers=[provider], market=provider, rent=provider)
+
+    async def progress(_: JobProgress) -> None:
+        return None
+
+    outcome = await execute_search(SearchRunRequest(filters=SearchFilters(cities=["Dalton, GA"])), progress, providers)
+    assert calls == {"/listings/sale": 1, "/listings/rental/long-term": 1, "/markets": 1}  # no per-ZIP calls, no AVMs
+    by_zip: dict[str, list] = {}
+    for card in outcome.cards:
+        by_zip.setdefault(card.zip_code, []).append(card)
+    assert all(c.rent_source == "market_zip" and c.long_term.monthly_income == 1770 for c in by_zip[z_main])  # median of 8 rentals
+    assert all(c.long_term.monthly_income == 1500 for c in by_zip[z_thin_b])  # biggest thin ZIP got the one fallback call
+    assert all(not c.long_term.available for c in by_zip[z_thin_a])
+    assert any("too few rental listings" in w and z_thin_a in w for w in outcome.warnings)
+
+    # Changing locally applied filters reuses cached pages and stored rents: zero new requests.
+    before = dict(calls)
+    await execute_search(SearchRunRequest(filters=SearchFilters(cities=["Dalton, GA"], max_price=200300, min_beds=3, property_types=["single_family"])), progress, providers)
+    assert calls == before
+    await provider.aclose()
+
+
+def test_rental_listing_aggregation():
+    from app.services.search import stats_from_rentals
+
+    now = datetime.now(UTC)
+    rows = [parse_listing(rentcast_listing(i, price=1000 + 100 * i, bedrooms=2 + i % 2, squareFootage=1000)) for i in range(6)]
+    rows.append(parse_listing(rentcast_listing(0, price=99)))  # same address, implausible rent: ignored
+    stats = stats_from_rentals([r for r in rows if r], "rentcast", now)["30720"]
+    assert stats.source == "rental_listings" and stats.rental_listings == 6
+    assert stats.median_rent == D("1250.00")
+    assert {b.bedrooms: b.count for b in stats.rent_by_bedrooms} == {2: 3, 3: 3}
+    assert not stats.has_reliable_rent()  # 6 listings: below both sample thresholds
+
+
+async def test_partial_results_are_not_served_from_the_search_cache(app):
+    """A search cut short (e.g. budget reached) must be retried, not replayed, once the cause is fixed."""
+    from app.core.redis import get_redis
+    from app.services import search as search_service
+
+    request = SearchRunRequest(filters=SearchFilters(zip_codes=["99001"]))
+    job, needs_run = await search_service.create_job(request)
+    assert needs_run
+    job.status, job.partial, job.partial_reasons = "completed", True, ["RentCast API budget reached"]
+    await search_service.save_job(job)
+    await get_redis().set(f"searchjob:{job.id}:result", '{"cards": []}')
+    again, needs_run_again = await search_service.create_job(request)
+    assert needs_run_again and again.id != job.id
+
+
+async def test_listing_pages_are_cached_in_postgres_and_survive_a_redis_flush(app):
+    from app.core.redis import get_redis
+    from app.providers.base import ListingPage
+    from app.services import response_cache
+    from app.services.search import _cached_page
+
+    calls = []
+
+    class StubProvider:
+        key = "stub-cache"
+        name = "Stub"
+        page_size = 500
+
+        def request_params(self, query):
+            return {"zipCode": query.zip_code}
+
+        async def search_listings(self, query, offset, limit):
+            calls.append(offset)
+            return ListingPage(listings=[parse_listing(rentcast_listing(1))], has_more=False, next_offset=0)
+
+    provider, query = StubProvider(), ListingQuery(zip_code="30269")
+    first = await _cached_page(provider, query, 0)
+    await get_redis().flushdb()  # a Redis restart or eviction must not cause a repeat paid request
+    second = await _cached_page(provider, ListingQuery(zip_code="30269", min_price=1), 0)
+    assert calls == [0] and second.page == first.page and not second.stale
+    await _cached_page(provider, query, 0, mode="refresh")
+    assert calls == [0, 0]
+
+    await response_cache.set_json("listings:expired-test", {"a": 1}, keep_seconds=60)
+    assert await response_cache.get_json("listings:expired-test") == {"a": 1}
+
+    from sqlalchemy import update
+
+    from app.core.db import session_scope
+    from app.models.tables import ProviderResponseCache
+
+    async with session_scope() as session:
+        await session.execute(update(ProviderResponseCache).where(ProviderResponseCache.key == "listings:expired-test").values(expires_at=datetime(2000, 1, 1, tzinfo=UTC)))
+    assert await response_cache.get_json("listings:expired-test") is None
+
+
+def zip_handler(zip_code: str, calls: dict[str, int], *, sale_pages: int = 1, page_size: int = 500):
+    """A fake RentCast for one ZIP: ``sale_pages`` full pages of homes for sale and 30 rentals."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.removeprefix("/v1")
+        calls[path] = calls.get(path, 0) + 1
+        if path == "/listings/sale":
+            offset = int(request.url.params.get("offset", 0))
+            page = offset // page_size
+            count = page_size if page < sale_pages - 1 else max(page_size // 2, 1)
+            if page >= sale_pages:
+                count = 0
+            homes = [offset + i for i in range(count)]
+            return httpx.Response(200, json=[rentcast_listing(n, id=f"{n}-{zip_code}", formattedAddress=f"{n} Oak St, Town, GA {zip_code}", zipCode=zip_code) for n in homes])
+        if path == "/listings/rental/long-term":
+            return httpx.Response(200, json=[rentcast_listing(9000 + i, id=f"r{i}-{zip_code}", formattedAddress=f"{9000 + i} Elm St, Town, GA {zip_code}", zipCode=zip_code, price=1600 + 25 * i) for i in range(30)])
+        return httpx.Response(404, json={})
+
+    return handler
+
+
+async def _age_listing_cache(keys: set[str], zip_code: str, hours: float) -> None:
+    """Pretend ``hours`` have passed for the listing pages in ``keys`` and the ZIP's rent statistics."""
+    from datetime import timedelta
+
+    from sqlalchemy import update
+
+    from app.core.db import session_scope
+    from app.models.tables import MarketSnapshot, ProviderResponseCache
+
+    async with session_scope() as session:
+        await session.execute(update(ProviderResponseCache).where(ProviderResponseCache.key.in_(keys)).values(fetched_at=ProviderResponseCache.fetched_at - timedelta(hours=hours)))
+        await session.execute(update(MarketSnapshot).where(MarketSnapshot.zip_code == zip_code).values(fetched_at=MarketSnapshot.fetched_at - timedelta(hours=hours)))
+
+
+async def _cache_keys() -> set[str]:
+    from sqlalchemy import select
+
+    from app.core.db import session_scope
+    from app.models.tables import ProviderResponseCache
+
+    async with session_scope() as session:
+        return set((await session.execute(select(ProviderResponseCache.key))).scalars())
+
+
+async def _quiet(_: JobProgress) -> None:
+    return None
+
+
+async def test_repeat_zip_search_within_a_day_makes_no_rentcast_requests(app, monkeypatch):
+    """Searching a ZIP again later the same day (any user, search-result cache gone) costs nothing.
+
+    Listing pages are fresh for a day (the admin setting) and rent statistics for MARKET_STATS_TTL_DAYS.
+    After a day, the older copy is still shown instantly and only the background refresh re-buys
+    the sale listings.
+    """
+    import random
+
+    from app.core.config import get_settings
+    from app.core.redis import get_redis
+    from app.services import search as search_service
+
+    monkeypatch.setattr(get_settings(), "rent_avm_top_n", 0)
+    zip_code = str(random.randint(10000, 19999))
+    calls: dict[str, int] = {}
+    provider = make_rentcast(zip_handler(zip_code, calls))
+    providers = ProviderSet(mode="live", listing_providers=[provider], market=provider, rent=provider)
+    request = SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code]))
+
+    async def search(mode=None):
+        before = sum(calls.values())
+        outcome = await execute_search(request, _quiet, providers, listing_mode=mode)
+        assert outcome.cards and all(c.long_term.available for c in outcome.cards)
+        return sum(calls.values()) - before, outcome
+
+    existing = await _cache_keys()
+    # First search of the day: one sale-listings page and one rental-listings page, fetched side by side.
+    cost, first = await search()
+    assert cost == 2 and calls == {"/listings/sale": 1, "/listings/rental/long-term": 1} and not first.stale_keys
+    new_keys = await _cache_keys() - existing
+    assert len(new_keys) == 2
+
+    # Another user, an hour later: the 1-hour search-result cache in Redis is gone, Postgres still serves it.
+    await get_redis().flushdb()
+    assert (await search())[0] == 0
+    _, needs_run = await search_service.create_job(request)
+    assert needs_run  # no Redis shortcut: the run above really went through the Postgres cache
+
+    # 23 hours after the first search: still zero RentCast requests, nothing stale.
+    await _age_listing_cache(new_keys, zip_code, 23)
+    cost, outcome = await search()
+    assert cost == 0 and not outcome.stale_keys
+
+    # 25 hours: the older listings are shown at once (no request) and flagged for a background refresh…
+    await _age_listing_cache(new_keys, zip_code, 2)
+    cost, outcome = await search()
+    assert cost == 0 and len(outcome.stale_keys) == 1
+    assert outcome.data_as_of is not None and (datetime.now(UTC) - outcome.data_as_of).total_seconds() > 24 * 3600
+    # …which re-buys only the sale listings: rents are still fresh (30 days).
+    cost, _ = await search("revalidate")
+    assert cost == 1 and calls == {"/listings/sale": 2, "/listings/rental/long-term": 1}
+    cost, outcome = await search()
+    assert cost == 0 and not outcome.stale_keys
+
+    # Past the serve-while-refreshing window (1 day fresh + 7 days), people wait for fresh listings.
+    await _age_listing_cache(new_keys, zip_code, 24 * 9)
+    cost, outcome = await search()
+    assert cost == 1 and not outcome.stale_keys
+    await provider.aclose()
+
+
+async def test_stale_results_are_refreshed_in_the_background_once_per_area(app, monkeypatch):
+    """Two people open the same stale ZIP: both see results at once, and RentCast is called once."""
+    import asyncio
+    import random
+
+    from app.core.config import get_settings
+    from app.services import search as search_service
+
+    monkeypatch.setattr(get_settings(), "rent_avm_top_n", 0)
+    zip_code = str(random.randint(20000, 29999))
+    calls: dict[str, int] = {}
+    provider = make_rentcast(zip_handler(zip_code, calls))
+    providers = ProviderSet(mode="live", listing_providers=[provider], market=provider, rent=provider)
+    monkeypatch.setattr(search_service, "get_providers", lambda: providers)
+
+    existing = await _cache_keys()
+    await execute_search(SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code])), _quiet, providers)
+    await _age_listing_cache(await _cache_keys() - existing, zip_code, 30)
+    sale_calls = calls["/listings/sale"]
+
+    # Different filters, same ZIP: they share the cached listing pages and therefore one refresh.
+    jobs = []
+    for request in (SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code])), SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code], min_beds=3))):
+        job, needs_run = await search_service.create_job(request)
+        assert needs_run
+        jobs.append(job.id)
+    await asyncio.gather(*(search_service.run_search_job(job_id) for job_id in jobs))
+
+    assert calls["/listings/sale"] == sale_calls + 1  # one paid refresh for both searches
+    for job_id in jobs:
+        job = await search_service.load_job(job_id)
+        assert job.status == "completed" and not job.refreshing
+        assert job.results_version >= 2  # the stale results, then the refreshed ones
+        assert (datetime.now(UTC) - job.data_as_of).total_seconds() < 600
+        assert await search_service.load_cards(job_id)
+    await provider.aclose()
+
+
+async def test_large_areas_publish_results_while_later_pages_load(app, monkeypatch):
+    """A ZIP with several pages of listings shows the first page's homes before the rest arrive."""
+    import random
+
+    from app.core.config import get_settings
+    from app.services import search as search_service
+
+    monkeypatch.setattr(get_settings(), "rent_avm_top_n", 0)
+    monkeypatch.setattr(search_service, "PUBLISH_INTERVAL_SECONDS", 0)
+    zip_code = str(random.randint(30000, 39999))
+    calls: dict[str, int] = {}
+    provider = make_rentcast(zip_handler(zip_code, calls, sale_pages=3, page_size=50), rentcast_page_size=50)
+    providers = ProviderSet(mode="live", listing_providers=[provider], market=provider, rent=provider)
+    previews: list[int] = []
+
+    async def publish(cards):
+        previews.append(len(cards))
+
+    outcome = await execute_search(SearchRunRequest(filters=SearchFilters(zip_codes=[zip_code])), _quiet, providers, publish=publish)
+    assert calls["/listings/sale"] == 3
+    assert previews == [50, 100, 125]  # one preview per page, growing
+    assert len(outcome.cards) == 125 and all(c.long_term.available for c in outcome.cards)
+    assert calls["/listings/rental/long-term"] == 1  # rents loaded once, not once per page
+    await provider.aclose()
+
+
+async def test_admin_can_change_how_long_listings_stay_fresh(app, client, anon_client):
+    """The listing cache period is an admin setting (default 1 day) and applies to pages already cached."""
+    from datetime import timedelta
+
+    from app.services import response_cache, runtime_settings
+
+    assert (await anon_client.get(f"{API}/system/cache-settings")).status_code == 401
+    assert (await anon_client.put(f"{API}/system/cache-settings", json={"listing_cache_hours": 1, "listing_stale_days": 0})).status_code == 401
+    current = (await client.get(f"{API}/system/cache-settings")).json()
+    assert current["defaults"] == {"listing_cache_hours": 24.0, "listing_stale_days": 7.0}
+    assert current["listing_cache_hours"] == 24.0
+
+    await response_cache.set_json("listings:fresh-setting-test", {"a": 1})
+    await _age_listing_cache({"listings:fresh-setting-test"}, "00000", 30)
+    assert await response_cache.get_json("listings:fresh-setting-test") is None  # 30 h old: stale at 24 h
+
+    saved = await client.put(f"{API}/system/cache-settings", json={"listing_cache_hours": 48, "listing_stale_days": 3})
+    assert saved.status_code == 200 and saved.json()["listing_cache_hours"] == 48
+    assert await response_cache.get_json("listings:fresh-setting-test") == {"a": 1}  # fresh again at 48 h
+    status = (await client.get(f"{API}/system/status")).json()
+    assert status["freshness"]["listing_cache_hours"] == 48 and status["freshness"]["listing_stale_days"] == 3
+    assert (await client.put(f"{API}/system/cache-settings", json={"listing_cache_hours": 0, "listing_stale_days": 3})).status_code == 422
+
+    await client.put(f"{API}/system/cache-settings", json={"listing_cache_hours": 24, "listing_stale_days": 7})
+    assert await runtime_settings.listing_keep_seconds() == timedelta(days=8).total_seconds()
+
+
+async def test_mapbox_reverse_lookup_reads_the_zip_and_place():
+    from app.providers.mapbox import MapboxGeocoder
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(path=request.url.path, types=request.url.params.get("types"))
+        feature = {"properties": {"name": "30214", "context": {"place": {"name": "Fayetteville"}, "region": {"region_code": "GA"}}}}
+        return httpx.Response(200, json={"features": [feature]})
+
+    geocoder = MapboxGeocoder(Settings(mapbox_access_token="pk.test"), transport=httpx.MockTransport(handler))
+    try:
+        hit = await geocoder.zip_at(33.45, -84.45)
+    finally:
+        await geocoder.aclose()
+    assert seen == {"path": "/search/geocode/v6/reverse", "types": "postcode"}
+    assert hit is not None and hit.zip_code == "30214" and hit.place == "Fayetteville, GA"
+
+
+async def test_mapbox_suggestions_read_cities_and_zip_codes():
+    from app.providers.mapbox import MapboxGeocoder
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(types=request.url.params.get("types"), autocomplete=request.url.params.get("autocomplete"))
+        city = {
+            "geometry": {"coordinates": [-84.58, 33.39]},
+            "properties": {"feature_type": "place", "name": "Peachtree City", "bbox": [-84.62, 33.33, -84.52, 33.44], "context": {"region": {"region_code": "GA"}}},
+        }
+        postcode = {
+            "geometry": {"coordinates": [-84.57, 33.40]},
+            "properties": {"feature_type": "postcode", "name": "30269", "context": {"place": {"name": "Peachtree City"}, "region": {"region_code": "GA"}}},
+        }
+        return httpx.Response(200, json={"features": [city, postcode, {"properties": {"feature_type": "region"}, "geometry": {"coordinates": [0, 0]}}]})
+
+    geocoder = MapboxGeocoder(Settings(mapbox_access_token="pk.test"), transport=httpx.MockTransport(handler))
+    try:
+        hits = await geocoder.suggest("peachtree")
+    finally:
+        await geocoder.aclose()
+    assert seen == {"types": "place,postcode", "autocomplete": "true"}
+    assert [(h.kind, h.label) for h in hits] == [("place", "Peachtree City, GA"), ("postcode", "30269 · Peachtree City, GA")]
+    assert hits[0].bbox == (-84.62, 33.33, -84.52, 33.44) and hits[1].zip_code == "30269"
+
+
+async def test_city_zip_codes_keep_only_the_city_and_order_by_coverage():
+    from app.providers.base import ZipAtPoint
+    from app.services.area import zips_in_place
+
+    class Grid:
+        key = "fake"
+
+        async def zip_at(self, latitude, longitude):
+            if longitude < -84.60:
+                return ZipAtPoint(zip_code="30214", place="Fayetteville, GA")  # a neighbouring town
+            return ZipAtPoint(zip_code="30269" if latitude < 33.42 else "30270", place="Peachtree City, GA")
+
+    found = await zips_in_place(Grid(), name="Peachtree City", region="GA", latitude=33.39, longitude=-84.57, bbox=(-84.63, 33.34, -84.51, 33.44))
+    assert found.zip_codes == ["30269", "30270"]
+
+
+def test_malformed_listing_values_are_dropped_not_fatal():
+    odd = parse_listing(
+        rentcast_listing(
+            7,
+            latitude="not-a-number",
+            longitude=-400,
+            lotSize=9_000_000_000_000,
+            squareFootage="Infinity",
+            price="NaN",
+            zipCode=30901,
+            listingAgent={"name": "A" * 500},
+        )
+    )
+    assert odd is not None
+    assert odd.latitude is None and odd.longitude is None
+    assert odd.lot_size_sqft is None and odd.square_feet is None and odd.price is None
+    assert odd.zip_code == "30901"
+    # Something that cannot be read at all is skipped instead of failing the whole page.
+    assert parse_listing({"id": "x", "formattedAddress": "1 A St", "history": {"2026-01-01": "oops"}}) is None
+
+
+async def test_over_long_listing_text_is_clipped_and_saved(app):
+    from sqlalchemy import select
+
+    from app.core.db import session_scope
+    from app.models.tables import Property, PropertyListing
+    from app.services import property_store
+
+    long = parse_listing(
+        rentcast_listing(9, addressLine2="Unit " + "9" * 200, listingType="X" * 90, mlsNumber="M" * 90, listingOffice={"name": "Office " * 60})
+    )
+    assert long is not None
+    merged = merge_listings([long, parse_listing(rentcast_listing(10))])
+    async with session_scope() as session:
+        skipped = await property_store.upsert_listings(session, merged)
+    assert skipped == 0
+    async with session_scope() as session:
+        row = (await session.execute(select(Property).where(Property.id == merged[0].property_id))).scalar_one()
+        listing = (await session.execute(select(PropertyListing).where(PropertyListing.property_id == merged[0].property_id))).scalar_one()
+    assert len(row.address_line2) == 80 and len(listing.listing_type) == 40 and len(listing.office_name) == 160
