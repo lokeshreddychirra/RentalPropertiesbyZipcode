@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
@@ -11,6 +12,7 @@ from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -52,6 +54,8 @@ LEGALITY_LABELS = {
 }
 
 
+logger = logging.getLogger(__name__)
+
 def _chunks(items: Sequence[Any], size: int = CHUNK) -> Iterable[Sequence[Any]]:
     for start in range(0, len(items), size):
         yield items[start : start + size]
@@ -67,131 +71,162 @@ def provider_name(key: str | None) -> str | None:
 # --------------------------------------------------------------------------- upsert
 
 
-async def upsert_listings(session: AsyncSession, merged: list[MergedListing]) -> None:
-    """Insert or update properties, their canonical listing, sources, images and price history."""
+def _clip(value: str | None, size: int) -> str | None:
+    """Cut text to its column size (an over-long value from a provider must not fail the whole batch)."""
+    return value[:size] if isinstance(value, str) else value
+
+
+def _small_int(value: int | None) -> int | None:
+    return value if value is None or abs(value) < 2_000_000_000 else None
+
+
+async def upsert_listings(session: AsyncSession, merged: list[MergedListing]) -> int:
+    """Insert or update properties, their canonical listing, sources, images and price history.
+
+    Each chunk is written in a savepoint. If a chunk fails, its listings are retried one by one and
+    any listing the database still rejects is skipped (and logged), so one bad record never sinks a
+    search. Returns how many listings were skipped.
+    """
     now = datetime.now(UTC)
+    skipped = 0
     for chunk in _chunks(merged):
-        property_rows = []
-        for item in chunk:
-            p = item.primary
-            location = f"SRID=4326;POINT({p.longitude} {p.latitude})" if p.latitude is not None and p.longitude is not None else None
-            property_rows.append(
+        try:
+            async with session.begin_nested():
+                await _upsert_chunk(session, chunk, now)
+        except SQLAlchemyError:
+            logger.warning("Saving %d listings failed; retrying them one at a time", len(chunk), exc_info=True)
+            for item in chunk:
+                try:
+                    async with session.begin_nested():
+                        await _upsert_chunk(session, [item], now)
+                except SQLAlchemyError:
+                    skipped += 1
+                    logger.exception("Skipped listing %s (%s): the database rejected it", item.primary.provider_listing_id, item.primary.formatted_address)
+    return skipped
+
+
+async def _upsert_chunk(session: AsyncSession, chunk: Sequence[MergedListing], now: datetime) -> None:
+    property_rows = []
+    for item in chunk:
+        p = item.primary
+        location = f"SRID=4326;POINT({p.longitude} {p.latitude})" if p.latitude is not None and p.longitude is not None else None
+        property_rows.append(
+            dict(
+                id=item.property_id,
+                dedupe_key=item.key[:255],
+                formatted_address=p.formatted_address[:300],
+                address_line1=_clip(p.address_line1, 200),
+                address_line2=_clip(p.address_line2, 80),
+                city=_clip(p.city, 120),
+                state=_clip(p.state, 2),
+                zip_code=(p.zip_code or "")[:10] or None,
+                county=_clip(p.county, 120),
+                latitude=p.latitude,
+                longitude=p.longitude,
+                location=location,
+                property_type=_clip(p.property_type, 30),
+                bedrooms=p.bedrooms if p.bedrooms is None or abs(p.bedrooms) < 1000 else None,
+                bathrooms=p.bathrooms if p.bathrooms is None or abs(p.bathrooms) < 1000 else None,
+                square_feet=_small_int(p.square_feet),
+                lot_size_sqft=_small_int(p.lot_size_sqft),
+                year_built=_small_int(p.year_built),
+                is_demo=p.is_demo,
+            )
+        )
+    stmt = insert(Property).values(property_rows)
+    update_cols = {c: getattr(stmt.excluded, c) for c in property_rows[0] if c not in ("id", "dedupe_key")}
+    update_cols["updated_at"] = func.now()
+    await session.execute(stmt.on_conflict_do_update(index_elements=[Property.id], set_=update_cols))
+
+    listing_rows = []
+    for item in chunk:
+        p = item.primary
+        listing_rows.append(
+            dict(
+                id=uuid.uuid4(),
+                property_id=item.property_id,
+                status=p.status,
+                listing_type=_clip(p.listing_type, 40),
+                price=p.price,
+                listed_date=p.listed_date,
+                removed_date=p.removed_date,
+                days_on_market=_small_int(p.days_on_market),
+                hoa_fee_monthly=p.hoa_fee_monthly,
+                description=p.description,
+                listing_url=_clip(p.listing_url, 1000),
+                mls_name=_clip(p.mls_name, 120),
+                mls_number=_clip(p.mls_number, 60),
+                agent_name=_clip(p.agent_name, 160),
+                office_name=_clip(p.office_name, 160),
+                primary_provider=_clip(p.provider, 40),
+                last_seen_at=p.last_seen_at,
+                source_updated_at=p.source_updated_at,
+            )
+        )
+    stmt = insert(PropertyListing).values(listing_rows)
+    update_cols = {c: getattr(stmt.excluded, c) for c in listing_rows[0] if c not in ("id", "property_id")}
+    update_cols["updated_at"] = func.now()
+    result = await session.execute(
+        stmt.on_conflict_do_update(index_elements=[PropertyListing.property_id], set_=update_cols).returning(
+            PropertyListing.property_id, PropertyListing.id
+        )
+    )
+    listing_ids = dict(result.all())
+
+    source_rows, image_rows, history_rows, expense_rows = [], [], [], []
+    for item in chunk:
+        for source in item.sources:
+            source_rows.append(
                 dict(
-                    id=item.property_id,
-                    dedupe_key=item.key[:255],
-                    formatted_address=p.formatted_address[:300],
-                    address_line1=p.address_line1,
-                    address_line2=p.address_line2,
-                    city=p.city,
-                    state=p.state,
-                    zip_code=(p.zip_code or "")[:10] or None,
-                    county=p.county,
-                    latitude=p.latitude,
-                    longitude=p.longitude,
-                    location=location,
-                    property_type=p.property_type,
-                    bedrooms=p.bedrooms,
-                    bathrooms=p.bathrooms,
-                    square_feet=p.square_feet,
-                    lot_size_sqft=p.lot_size_sqft,
-                    year_built=p.year_built,
-                    is_demo=p.is_demo,
+                    id=uuid.uuid4(),
+                    listing_id=listing_ids[item.property_id],
+                    provider_key=source.provider,
+                    provider_listing_id=source.provider_listing_id[:255],
+                    price=source.price,
+                    status=_clip(source.status, 20),
+                    source_url=_clip(source.listing_url, 1000),
+                    fetched_at=now,
                 )
             )
-        stmt = insert(Property).values(property_rows)
-        update_cols = {c: getattr(stmt.excluded, c) for c in property_rows[0] if c not in ("id", "dedupe_key")}
-        update_cols["updated_at"] = func.now()
-        await session.execute(stmt.on_conflict_do_update(index_elements=[Property.id], set_=update_cols))
-
-        listing_rows = []
-        for item in chunk:
-            p = item.primary
-            listing_rows.append(
+        for position, url in enumerate(item.image_urls[:40]):
+            image_rows.append(
+                dict(id=uuid.uuid4(), property_id=item.property_id, url=url[:1000], position=position, provider_key=item.primary.provider, attribution=_clip(item.primary.image_attribution, 255))
+            )
+        for event in item.price_history:
+            history_rows.append(
+                dict(id=uuid.uuid4(), property_id=item.property_id, event_date=event.event_date, event_type=event.event_type, price=event.price, provider_key=item.primary.provider)
+            )
+        p = item.primary
+        if p.property_tax_annual is not None:
+            expense_rows.append(
                 dict(
                     id=uuid.uuid4(),
                     property_id=item.property_id,
-                    status=p.status,
-                    listing_type=p.listing_type,
-                    price=p.price,
-                    listed_date=p.listed_date,
-                    removed_date=p.removed_date,
-                    days_on_market=p.days_on_market,
-                    hoa_fee_monthly=p.hoa_fee_monthly,
-                    description=p.description,
-                    listing_url=p.listing_url,
-                    mls_name=p.mls_name,
-                    mls_number=p.mls_number,
-                    agent_name=p.agent_name,
-                    office_name=p.office_name,
-                    primary_provider=p.provider,
-                    last_seen_at=p.last_seen_at,
-                    source_updated_at=p.source_updated_at,
+                    kind="property_tax",
+                    annual_amount=p.property_tax_annual,
+                    year=p.property_tax_year or 0,
+                    source="Listing",
+                    provider_key=p.provider,
                 )
             )
-        stmt = insert(PropertyListing).values(listing_rows)
-        update_cols = {c: getattr(stmt.excluded, c) for c in listing_rows[0] if c not in ("id", "property_id")}
-        update_cols["updated_at"] = func.now()
-        result = await session.execute(
-            stmt.on_conflict_do_update(index_elements=[PropertyListing.property_id], set_=update_cols).returning(
-                PropertyListing.property_id, PropertyListing.id
+
+    if source_rows:
+        stmt = insert(PropertyListingSource).values(source_rows)
+        await session.execute(
+            stmt.on_conflict_do_update(
+                index_elements=["provider_key", "provider_listing_id"],
+                set_=dict(listing_id=stmt.excluded.listing_id, price=stmt.excluded.price, status=stmt.excluded.status, source_url=stmt.excluded.source_url, fetched_at=stmt.excluded.fetched_at),
             )
         )
-        listing_ids = dict(result.all())
-
-        source_rows, image_rows, history_rows, expense_rows = [], [], [], []
-        for item in chunk:
-            for source in item.sources:
-                source_rows.append(
-                    dict(
-                        id=uuid.uuid4(),
-                        listing_id=listing_ids[item.property_id],
-                        provider_key=source.provider,
-                        provider_listing_id=source.provider_listing_id[:255],
-                        price=source.price,
-                        status=source.status,
-                        source_url=source.listing_url,
-                        fetched_at=now,
-                    )
-                )
-            for position, url in enumerate(item.image_urls[:40]):
-                image_rows.append(
-                    dict(id=uuid.uuid4(), property_id=item.property_id, url=url[:1000], position=position, provider_key=item.primary.provider, attribution=item.primary.image_attribution)
-                )
-            for event in item.price_history:
-                history_rows.append(
-                    dict(id=uuid.uuid4(), property_id=item.property_id, event_date=event.event_date, event_type=event.event_type, price=event.price, provider_key=item.primary.provider)
-                )
-            p = item.primary
-            if p.property_tax_annual is not None:
-                expense_rows.append(
-                    dict(
-                        id=uuid.uuid4(),
-                        property_id=item.property_id,
-                        kind="property_tax",
-                        annual_amount=p.property_tax_annual,
-                        year=p.property_tax_year or 0,
-                        source="Listing",
-                        provider_key=p.provider,
-                    )
-                )
-
-        if source_rows:
-            stmt = insert(PropertyListingSource).values(source_rows)
-            await session.execute(
-                stmt.on_conflict_do_update(
-                    index_elements=["provider_key", "provider_listing_id"],
-                    set_=dict(listing_id=stmt.excluded.listing_id, price=stmt.excluded.price, status=stmt.excluded.status, source_url=stmt.excluded.source_url, fetched_at=stmt.excluded.fetched_at),
-                )
-            )
-        if image_rows:
-            await session.execute(insert(PropertyImage).values(image_rows).on_conflict_do_nothing())
-        if history_rows:
-            await session.execute(insert(PropertyPriceHistory).values(history_rows).on_conflict_do_nothing())
-        if expense_rows:
-            stmt = insert(PropertyExpense).values(expense_rows)
-            await session.execute(
-                stmt.on_conflict_do_update(index_elements=["property_id", "kind", "year"], set_=dict(annual_amount=stmt.excluded.annual_amount, source=stmt.excluded.source))
-            )
+    if image_rows:
+        await session.execute(insert(PropertyImage).values(image_rows).on_conflict_do_nothing())
+    if history_rows:
+        await session.execute(insert(PropertyPriceHistory).values(history_rows).on_conflict_do_nothing())
+    if expense_rows:
+        stmt = insert(PropertyExpense).values(expense_rows)
+        await session.execute(
+            stmt.on_conflict_do_update(index_elements=["property_id", "kind", "year"], set_=dict(annual_amount=stmt.excluded.annual_amount, source=stmt.excluded.source))
+        )
 
 
 def _comparable_row(comp: Comparable, *, rental: bool) -> dict[str, Any]:

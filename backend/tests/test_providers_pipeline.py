@@ -645,3 +645,45 @@ async def test_city_zip_codes_keep_only_the_city_and_order_by_coverage():
 
     found = await zips_in_place(Grid(), name="Peachtree City", region="GA", latitude=33.39, longitude=-84.57, bbox=(-84.63, 33.34, -84.51, 33.44))
     assert found.zip_codes == ["30269", "30270"]
+
+
+def test_malformed_listing_values_are_dropped_not_fatal():
+    odd = parse_listing(
+        rentcast_listing(
+            7,
+            latitude="not-a-number",
+            longitude=-400,
+            lotSize=9_000_000_000_000,
+            squareFootage="Infinity",
+            price="NaN",
+            zipCode=30901,
+            listingAgent={"name": "A" * 500},
+        )
+    )
+    assert odd is not None
+    assert odd.latitude is None and odd.longitude is None
+    assert odd.lot_size_sqft is None and odd.square_feet is None and odd.price is None
+    assert odd.zip_code == "30901"
+    # Something that cannot be read at all is skipped instead of failing the whole page.
+    assert parse_listing({"id": "x", "formattedAddress": "1 A St", "history": {"2026-01-01": "oops"}}) is None
+
+
+async def test_over_long_listing_text_is_clipped_and_saved(app):
+    from sqlalchemy import select
+
+    from app.core.db import session_scope
+    from app.models.tables import Property, PropertyListing
+    from app.services import property_store
+
+    long = parse_listing(
+        rentcast_listing(9, addressLine2="Unit " + "9" * 200, listingType="X" * 90, mlsNumber="M" * 90, listingOffice={"name": "Office " * 60})
+    )
+    assert long is not None
+    merged = merge_listings([long, parse_listing(rentcast_listing(10))])
+    async with session_scope() as session:
+        skipped = await property_store.upsert_listings(session, merged)
+    assert skipped == 0
+    async with session_scope() as session:
+        row = (await session.execute(select(Property).where(Property.id == merged[0].property_id))).scalar_one()
+        listing = (await session.execute(select(PropertyListing).where(PropertyListing.property_id == merged[0].property_id))).scalar_one()
+    assert len(row.address_line2) == 80 and len(listing.listing_type) == 40 and len(listing.office_name) == 160

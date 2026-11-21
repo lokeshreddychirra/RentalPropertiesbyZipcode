@@ -1031,7 +1031,12 @@ async def run_search_job(job_id: str) -> None:
     except Exception as exc:
         logger.exception("Search job %s failed", job_id)
         job.status = "failed"
-        job.error = exc.message if isinstance(exc, ProviderError) else "The search could not be completed. Please try again."
+        # The reference (error type and job id) lets an administrator find the full traceback in the logs.
+        job.error = (
+            exc.message
+            if isinstance(exc, ProviderError)
+            else f"The search could not be completed. Please try again. (Reference: {type(exc).__name__} · {job_id[:8]})"
+        )
         job.finished_at = datetime.now(UTC)
         await save_job(job)
         await get_redis().delete(f"searchcache:{request_hash(request, job.data_mode)}")

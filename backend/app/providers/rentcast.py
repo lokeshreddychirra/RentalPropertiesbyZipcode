@@ -14,6 +14,7 @@ addition or omission degrades a field to "unavailable" instead of failing a sear
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -38,6 +39,7 @@ from .base import (
 )
 from .http import ProviderHTTPClient
 
+logger = logging.getLogger(__name__)
 KEY = "rentcast"
 
 _TYPE_FROM_RENTCAST = {
@@ -62,17 +64,36 @@ _TYPE_TO_RENTCAST = {
 
 
 def _dec(value: Any) -> Decimal | None:
-    if value is None or value == "":
+    if value is None or value == "" or isinstance(value, bool):
         return None
     try:
-        return Decimal(str(value))
+        number = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+    return number if number.is_finite() else None  # "NaN" / "Infinity" are treated as missing
+
+
+# Whole-number fields are stored as 32-bit integers; anything outside that range is bad data.
+_INT_LIMIT = 2_000_000_000
 
 
 def _int(value: Any) -> int | None:
     number = _dec(value)
-    return int(number) if number is not None else None
+    if number is None or abs(number) >= _INT_LIMIT:
+        return None
+    return int(number)
+
+
+def _text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _coord(value: Any, limit: float) -> float | None:
+    number = _dec(value)
+    return float(number) if number is not None and abs(number) <= limit else None
 
 
 def _datetime(value: Any) -> datetime | None:
@@ -104,6 +125,15 @@ def _property_type(value: Any) -> str | None:
 
 
 def parse_listing(item: dict[str, Any]) -> ListingRecord | None:
+    """One RentCast listing, or None when it is unusable. A malformed listing is skipped, never fatal."""
+    try:
+        return _parse_listing(item)
+    except Exception:
+        logger.warning("Skipped a malformed RentCast listing %r", item.get("id"), exc_info=True)
+        return None
+
+
+def _parse_listing(item: dict[str, Any]) -> ListingRecord | None:
     listing_id = item.get("id")
     address = item.get("formattedAddress")
     if not listing_id or not address:
@@ -138,16 +168,16 @@ def parse_listing(item: dict[str, Any]) -> ListingRecord | None:
         provider=KEY,
         provider_listing_id=str(listing_id),
         status=status,  # type: ignore[arg-type]
-        listing_type=item.get("listingType"),
-        formatted_address=address,
-        address_line1=item.get("addressLine1"),
-        address_line2=item.get("addressLine2"),
-        city=item.get("city"),
+        listing_type=_text(item.get("listingType")),
+        formatted_address=str(address),
+        address_line1=_text(item.get("addressLine1")),
+        address_line2=_text(item.get("addressLine2")),
+        city=_text(item.get("city")),
         state=state.upper() if isinstance(state, str) and len(state) == 2 else None,
-        zip_code=item.get("zipCode"),
-        county=item.get("county"),
-        latitude=item.get("latitude"),
-        longitude=item.get("longitude"),
+        zip_code=_text(item.get("zipCode")),
+        county=_text(item.get("county")),
+        latitude=_coord(item.get("latitude"), 90),
+        longitude=_coord(item.get("longitude"), 180),
         property_type=_property_type(item.get("propertyType")),  # type: ignore[arg-type]
         bedrooms=_dec(item.get("bedrooms")),
         bathrooms=_dec(item.get("bathrooms")),
@@ -159,10 +189,10 @@ def parse_listing(item: dict[str, Any]) -> ListingRecord | None:
         removed_date=_date(item.get("removedDate")),
         days_on_market=_int(item.get("daysOnMarket")),
         hoa_fee_monthly=_dec(hoa.get("fee")),
-        mls_name=item.get("mlsName"),
-        mls_number=item.get("mlsNumber"),
-        agent_name=agent.get("name"),
-        office_name=office.get("name"),
+        mls_name=_text(item.get("mlsName")),
+        mls_number=_text(item.get("mlsNumber")),
+        agent_name=_text(agent.get("name")),
+        office_name=_text(office.get("name")),
         last_seen_at=_datetime(item.get("lastSeenDate")),
         source_updated_at=_datetime(item.get("lastSeenDate")) or _datetime(item.get("createdDate")),
         price_history=history,
